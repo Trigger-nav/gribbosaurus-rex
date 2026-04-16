@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+numpy
+pandas
+requests
+requests-cache
+retry-requests
+openmeteo-requests
+streamlit
+plotly
+xarray
