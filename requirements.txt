@@ -1,11 +1,21 @@
-fastapi
-uvicorn
+# core
 numpy
 pandas
 requests
+pyyaml
+
+# GRIB decoding
+xarray
+cfgrib
+eccodes
+scipy            # xarray linear interpolation
+
+# API + dashboard
+fastapi
+uvicorn
+streamlit
+
+# kept for Phase 2 obs cross-checks (Open-Meteo served data)
 requests-cache
 retry-requests
 openmeteo-requests
-streamlit
-plotly
-xarray

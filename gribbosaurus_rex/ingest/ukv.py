@@ -1,15 +1,8 @@
-import requests
+"""DEPRECATED — the hardcoded UKV placeholder returned constants.
 
-def fetch_ukv(api_key, bbox):
-    url = "https://api-metoffice.apiconnect.ibmcloud.com/metoffice/production/v0/..."
+Free UKV GRIBs need a Met Office DataHub key; until that's added, the
+high-res regional slot is filled by DWD ICON-EU
+(gribbosaurus_rex/fetch/icon.py)."""
 
-    headers = {"X-IBM-Client-Id": api_key}
-
-    params = {
-        "bbox": bbox,
-        "parameters": "wind_speed,wind_direction,msl_pressure",
-        "format": "netcdf"
-    }
-
-    r = requests.get(url, headers=headers, params=params)
-    return r.content
+raise ImportError(
+    "gribbosaurus_rex.ingest.ukv is deprecated — use gribbosaurus_rex.fetch")

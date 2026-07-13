@@ -1,0 +1,35 @@
+# Gribbosaurus Rex — race configuration
+# One file per race/venue. Pass to the fetcher/API with --config or GRIBBO_CONFIG.
+
+name: balearics-summer
+description: Palma Bay / Balearics training and racing area
+
+# Bounding box (degrees). Longitudes in [-180, 180].
+bbox:
+  lat_min: 38.0
+  lat_max: 40.5
+  lon_min: 0.5
+  lon_max: 3.5
+
+# Which models to fetch. Keys must exist in fetch/registry.py
+# ifs        ECMWF IFS 0.25° open data
+# aifs       ECMWF AIFS (ML model) 0.25° open data
+# gfs        NOAA GFS 0.25° via NOMADS (server-side bbox subset)
+# icon_eu    DWD ICON-EU 0.0625° regular lat-lon (Europe only)
+models:
+  - ifs
+  - aifs
+  - gfs
+  - icon_eu
+
+# Forecast horizon to download (hours from cycle time).
+max_lead_hours: 96
+
+# Keep at most this many complete runs per model on disk (older ones pruned).
+keep_runs: 8
+
+# Where GRIBs + the run database live (relative to repo root or absolute).
+data_dir: data
+
+# Poller: how often to check for new cycles, in minutes.
+poll_minutes: 10

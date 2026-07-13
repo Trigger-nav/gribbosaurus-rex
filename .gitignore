@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 .DS_Store
 .cache.sqlite
+data/
+.venv/
+*.grib2
+*.grib2.part
