@@ -124,7 +124,9 @@ def point_timeseries(rec: RunRecord, lat: float, lon: float) -> pd.DataFrame:
 def value_at(rec: RunRecord, lat: float, lon: float, when: pd.Timestamp) -> dict:
     """Model value interpolated to a single time/place (for verification)."""
     ds = open_run(rec)
-    when = pd.Timestamp(when).tz_localize(None)
+    when = pd.Timestamp(when)
+    if when.tzinfo is not None:
+        when = when.tz_convert("UTC").tz_localize(None)
     pt = ds.interp(latitude=lat, longitude=lon, time=when, method="linear")
     u = float(pt["u10"]); v = float(pt["v10"])
     speed, direction = to_speed_dir(u, v)

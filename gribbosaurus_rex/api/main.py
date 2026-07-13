@@ -5,9 +5,13 @@ Endpoints
   GET /runs            recent run history (the "new GRIB available" feed)
   GET /point           multi-model forecast time series at lat/lon
   GET /grid            blended wind field over the race area
-  POST /fetch          trigger one polling pass now
+  GET /obs             recent observations (yacht, METAR, buoys)
+  GET /scores          latest confidence per model + current blend weights
+  GET /scores/history  confidence time series (dashboard chart)
+  POST /fetch          trigger one polling pass now (runs + obs + verify)
 
-Set GRIBBO_WATCH=1 to run the background poller inside the API process.
+Set GRIBBO_WATCH=1 to run the background poller inside the API process;
+the NMEA listener starts too when enabled in the race config.
 """
 
 from __future__ import annotations
@@ -21,22 +25,31 @@ from fastapi import FastAPI, HTTPException, Query
 from gribbosaurus_rex.config import load_config
 from gribbosaurus_rex.fetch.base import cycle_db
 from gribbosaurus_rex.fetch.registry import get_fetcher
-from gribbosaurus_rex.scheduler import Poller, check_all
+from gribbosaurus_rex.obs.store import ObsStore
+from gribbosaurus_rex.scheduler import Poller, check_all, obs_and_verify_pass
 from gribbosaurus_rex.store.runs import RunStore
 
 cfg = load_config()
 _poller: Poller | None = None
+_nmea = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _poller
+    global _poller, _nmea
     if os.environ.get("GRIBBO_WATCH") == "1":
         _poller = Poller(cfg)
         _poller.start()
+    if cfg.obs.nmea.enabled:
+        from gribbosaurus_rex.obs.nmea import NmeaListener
+
+        _nmea = NmeaListener(cfg, ObsStore(cfg.db_path))
+        _nmea.start()
     yield
     if _poller:
         _poller.stop()
+    if _nmea:
+        _nmea.stop()
 
 
 app = FastAPI(title="Gribbosaurus Rex API", lifespan=lifespan)
@@ -101,7 +114,35 @@ def grid(valid_time: str | None = None):
     return df.to_dict(orient="records")
 
 
+@app.get("/obs")
+def obs(window_h: float = 24, source: str | None = None):
+    store = ObsStore(cfg.db_path)
+    return [vars(o) for o in store.recent_obs(window_h, source=source)]
+
+
+@app.get("/scores")
+def scores():
+    from gribbosaurus_rex.pipeline import current_weights
+
+    store = ObsStore(cfg.db_path)
+    weights, source = current_weights(cfg)
+    return {
+        "race": cfg.name,
+        "latest": store.latest_scores(),
+        "blend_weights": weights,
+        "weight_source": source,   # "confidence" once verification has data
+    }
+
+
+@app.get("/scores/history")
+def scores_history(model: str | None = None, limit: int = 500):
+    store = ObsStore(cfg.db_path)
+    return [dict(r) for r in store.score_history(model=model, limit=limit)]
+
+
 @app.post("/fetch")
 def fetch_now():
     store = RunStore(cfg.db_path)
-    return {"fetched": check_all(cfg, store)}
+    fetched = check_all(cfg, store)
+    phase2 = obs_and_verify_pass(cfg, store)
+    return {"fetched": fetched, **phase2}

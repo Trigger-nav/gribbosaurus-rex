@@ -33,3 +33,30 @@ data_dir: data
 
 # Poller: how often to check for new cycles, in minutes.
 poll_minutes: 10
+
+# ---------------------------------------------------------------- Phase 2
+
+observations:
+  metar: true              # airport obs in the bbox (aviationweather.gov)
+  ndbc_stations: []        # NDBC buoy ids, e.g. [61198] — mostly US/Atlantic
+  openmeteo: false         # served "current" data — model-derived, low trust
+  # Fallback anchor for distance weighting when no fresh yacht position:
+  focus: {lat: 39.45, lon: 2.55}   # Palma Bay; omit to use bbox centroid
+  nmea:
+    enabled: false         # turn on when the boat feed is pointed at us
+    transport: udp         # udp | tcp
+    port: 10110            # Expedition/NMEA-over-network default
+
+# How much to trust each source (relative, 0..1)
+trust:
+  yacht: 1.0
+  metar: 0.85
+  ndbc: 0.9
+  openmeteo: 0.4
+
+scoring:
+  window_h: 48             # verification window for the rolling score
+  half_weight_nm: 30       # obs at this distance from the yacht counts 50%
+  lead_half_h: 24          # forecast lead at which weight halves
+  recency_half_h: 12       # obs age at which weight halves
+  err_scale_kn: 5.0        # vector error mapping: score = exp(-rmse/scale)

@@ -8,10 +8,12 @@ and (eventually) learned corrections that make GRIBs fit reality better.
 
 | Phase | What | State |
 |-------|------|-------|
-| 1 | Real GRIB fetching + run detection (IFS, AIFS, GFS, ICON-EU) | ✅ built |
-| 2 | Observations (METAR/buoys/yacht NMEA) + confidence scoring | ⏳ next |
-| 3 | Front end: run freshness, confidence over time, forecast vs observed | planned |
+| 1 | Real GRIB fetching + run detection (IFS, AIFS, GFS, ICON-EU) | ✅ live-verified |
+| 2 | Observations (METAR/buoys/yacht NMEA) + confidence scoring | ✅ built, needs live verify |
+| 3 | Front end: run freshness, confidence over time, forecast vs observed | partial |
 | 4 | Learned GRIB transforms (bias/rotation/timing corrections) | planned |
+
+See `HANDOFF.md` for architecture notes, gotchas and the roadmap.
 
 ## Data sources (all free, no keys)
 
@@ -40,10 +42,17 @@ horizon. Default is `configs/balearics.yaml`; select with `--config` or
 python -m gribbosaurus_rex fetch-once      # grab newest published runs
 python -m gribbosaurus_rex status          # what's on disk
 python -m gribbosaurus_rex point 39.5 2.6  # all-model forecast at a point
-python -m gribbosaurus_rex watch           # poll for new runs forever
-python -m gribbosaurus_rex serve           # API on :8000 (+ background poller)
+python -m gribbosaurus_rex verify-once     # fetch obs, verify, score models
+python -m gribbosaurus_rex scores          # latest confidence per model
+python -m gribbosaurus_rex import-log x.csv  # backtest an Expedition log
+python -m gribbosaurus_rex watch           # poll runs+obs+verify forever
+python -m gribbosaurus_rex serve           # API on :8000 (+ poller + NMEA)
 streamlit run dashboard/app.py             # dashboard on :8501
 ```
+
+Live yacht feed: set `observations.nmea.enabled: true` in the race config
+and point Expedition's network output (NMEA 0183, UDP port 10110) at the
+machine running `serve`. Test ashore with `python scripts/nmea_sim.py`.
 
 ## Layout
 

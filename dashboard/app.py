@@ -49,6 +49,44 @@ with st.expander("Run history"):
     else:
         st.info("No runs fetched yet.")
 
+# ---------------------------------------------------------- model confidence
+st.header("Model confidence")
+
+sc = api("/scores")
+if sc["latest"]:
+    src = ("earned from observations" if sc["weight_source"] == "confidence"
+           else "static priors — no verification data yet")
+    st.caption(f"Blend weights: {src}")
+    ccols = st.columns(max(len(sc["latest"]), 1))
+    for col, (m, s) in zip(ccols, sorted(sc["latest"].items())):
+        col.metric(label=m.upper(), value=f"{s:.2f}",
+                   delta=f"blend {sc['blend_weights'].get(m, 0):.0%}",
+                   delta_color="off")
+
+    hist = pd.DataFrame(api("/scores/history"))
+    if not hist.empty:
+        hist["time"] = pd.to_datetime(hist["time"])
+        st.line_chart(hist.pivot_table(index="time", columns="model",
+                                       values="score"))
+else:
+    st.info("No confidence scores yet — they appear once observations "
+            "have been fetched and verified against model runs.")
+
+# ------------------------------------------------------------- observations
+st.header("Recent observations")
+
+obs_rows = api("/obs", window_h=24)
+if obs_rows:
+    odf = pd.DataFrame(obs_rows)
+    st.caption(f"{len(odf)} obs in the last 24h "
+               f"({', '.join(sorted(odf['source'].unique()))})")
+    st.map(odf.rename(columns={"lat": "latitude", "lon": "longitude"}),
+           size=10, zoom=7)
+    with st.expander("Observation table"):
+        st.dataframe(odf, use_container_width=True)
+else:
+    st.info("No observations yet.")
+
 # ------------------------------------------------------------ point forecast
 st.header("Point forecast — all models")
 

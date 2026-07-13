@@ -33,6 +33,11 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("lon", type=float)
     sv = sub.add_parser("serve")
     sv.add_argument("--port", type=int, default=8000)
+    si = sub.add_parser("import-log")
+    si.add_argument("csv", help="Expedition CSV log file")
+    si.add_argument("--boat", default="yacht")
+    sub.add_parser("verify-once")
+    sub.add_parser("scores")
 
     args = p.parse_args(argv)
     logging.basicConfig(
@@ -90,6 +95,37 @@ def main(argv: list[str] | None = None) -> int:
         os.environ.setdefault("GRIBBO_WATCH", "1")
         uvicorn.run("gribbosaurus_rex.api.main:app", host="127.0.0.1",
                     port=args.port)
+        return 0
+
+    if args.cmd == "import-log":
+        from gribbosaurus_rex.obs.expedition import import_log
+        from gribbosaurus_rex.obs.store import ObsStore
+
+        n = import_log(args.csv, ObsStore(cfg.db_path), boat=args.boat)
+        print(f"imported {n} yacht obs from {args.csv}")
+        return 0
+
+    if args.cmd == "verify-once":
+        from gribbosaurus_rex.scheduler import obs_and_verify_pass
+        from gribbosaurus_rex.store.runs import RunStore
+
+        result = obs_and_verify_pass(cfg, RunStore(cfg.db_path))
+        print(f"new obs:           {result['new_obs']}")
+        print(f"new verifications: {result['new_verifications']}")
+        for m, s in sorted(result["scores"].items()):
+            print(f"  confidence {m:8s} {s:.3f}")
+        return 0
+
+    if args.cmd == "scores":
+        from gribbosaurus_rex.obs.store import ObsStore
+
+        store = ObsStore(cfg.db_path)
+        latest = store.latest_scores()
+        if not latest:
+            print("No scores yet — run verify-once after some obs exist.")
+            return 0
+        for m, s in sorted(latest.items()):
+            print(f"  {m:8s} {s:.3f}")
         return 0
 
     return 1

@@ -18,8 +18,26 @@ from gribbosaurus_rex.store.runs import RunStore
 
 log = logging.getLogger("gribbo.pipeline")
 
-# Static prior weights until verification-based scoring lands (Phase 2).
+# Prior weights, used until enough verification data exists to earn real
+# confidence scores (verify.blend_weights takes over automatically).
 STATIC_WEIGHTS = {"ifs": 0.35, "aifs": 0.2, "gfs": 0.25, "icon_eu": 0.2}
+
+
+def current_weights(cfg: RaceConfig) -> tuple[dict[str, float], str]:
+    """(weights, source) — earned confidence scores if any, else priors."""
+    from gribbosaurus_rex.obs.store import ObsStore
+    from gribbosaurus_rex.verify import blend_weights
+
+    try:
+        earned = blend_weights(cfg, ObsStore(cfg.db_path))
+    except Exception:  # noqa: BLE001
+        log.exception("score lookup failed — falling back to priors")
+        earned = None
+    if earned:
+        return earned, "confidence"
+    total = sum(STATIC_WEIGHTS.get(m, 0.1) for m in cfg.models)
+    return ({m: STATIC_WEIGHTS.get(m, 0.1) / total for m in cfg.models},
+            "prior")
 
 
 def generate_grid(cfg: RaceConfig, step: float = 0.25):
@@ -71,13 +89,16 @@ def run(cfg: RaceConfig | None = None, valid_time=None, step: float = 0.25) -> p
             "No complete model runs on disk yet — run "
             "`python -m gribbosaurus_rex fetch-once` first.")
 
-    w_total = sum(STATIC_WEIGHTS.get(m, 0.1) for m in fields)
+    weights, weight_source = current_weights(cfg)
+    w_total = sum(weights.get(m, 0.05) for m in fields)
     u_blend = np.zeros((len(lats), len(lons)))
     v_blend = np.zeros_like(u_blend)
     for m, (u, v) in fields.items():
-        w = STATIC_WEIGHTS.get(m, 0.1) / w_total
+        w = weights.get(m, 0.05) / w_total
         u_blend += w * u
         v_blend += w * v
+    log.debug("blend weights (%s): %s", weight_source,
+              {m: round(weights.get(m, 0.05) / w_total, 3) for m in fields})
 
     speed_ms, direction = to_speed_dir(u_blend, v_blend)
 

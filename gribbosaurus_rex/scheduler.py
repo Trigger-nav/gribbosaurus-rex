@@ -82,6 +82,26 @@ def check_all(cfg: RaceConfig, store: RunStore) -> dict[str, str | None]:
     return results
 
 
+def obs_and_verify_pass(cfg: RaceConfig, run_store: RunStore) -> dict:
+    """One Phase-2 pass: pull shore obs, verify window, refresh scores."""
+    from gribbosaurus_rex.obs.sources import fetch_all
+    from gribbosaurus_rex.obs.store import ObsStore
+    from gribbosaurus_rex.verify import compute_scores, verify_pass
+
+    obs_store = ObsStore(cfg.db_path)
+    result = {"new_obs": 0, "new_verifications": 0, "scores": {}}
+    try:
+        result["new_obs"] = fetch_all(cfg, obs_store)
+    except Exception:  # noqa: BLE001
+        log.exception("obs fetch failed")
+    try:
+        result["new_verifications"] = verify_pass(cfg, run_store, obs_store)
+        result["scores"] = compute_scores(cfg, obs_store)
+    except Exception:  # noqa: BLE001
+        log.exception("verification pass failed")
+    return result
+
+
 class Poller(threading.Thread):
     """Background poller used by the API process."""
 
@@ -96,6 +116,7 @@ class Poller(threading.Thread):
                  self.cfg.models, self.cfg.poll_minutes)
         while not self._stop.is_set():
             check_all(self.cfg, self.store)
+            obs_and_verify_pass(self.cfg, self.store)
             self._stop.wait(self.cfg.poll_minutes * 60)
 
     def stop(self) -> None:
@@ -110,4 +131,5 @@ def watch(cfg: RaceConfig) -> None:
         new = {m: c for m, c in fetched.items() if c}
         if new:
             log.info("fetched: %s", new)
+        obs_and_verify_pass(cfg, store)
         time.sleep(cfg.poll_minutes * 60)
