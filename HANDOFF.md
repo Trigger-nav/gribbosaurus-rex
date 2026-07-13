@@ -21,13 +21,19 @@ Owner: Jack (boat: Stingray). Racing focus: Balearics / W Med
   server-side bbox subset), DWD ICON-EU (regular lat-lon bz2). Probe-based
   run detection, SQLite run store + pruning, extraction to points/grids
   via cfgrib/xarray, CLI, FastAPI, Streamlit dashboard.
-- **Phase 2 (built, offline-tested; needs live verification):**
+- **Phase 2 (done, live-verified 2026-07-13):**
   observation store (obs/verification/scores tables in data/gribbo.sqlite),
   METAR bbox ingestion (aviationweather.gov JSON), NDBC buoys (optional),
   NMEA 0183 UDP/TCP listener (RMC/MWD/MDA/XDR/HDT/MWV, checksummed) for
   the live boat feed, Expedition CSV log importer (Excel-serial `Utc`
   supported), verification engine + rolling confidence scores, blend
   weights switch from priors to earned scores automatically.
+  `scripts/live_smoke_phase2.py` passed end-to-end against the real
+  aviationweather.gov METAR API (LECH/LEIB/LEPA, no parser changes
+  needed — `obs/sources.py:fetch_metar` already handled numeric
+  `wdir`/`"VRB"`/empty and the `slp`/`altim` fallback correctly) plus
+  the NMEA UDP loopback. NDBC untested live (no stations configured for
+  the Balearics bbox — it's a US/Atlantic network).
 - **Phase 3 (partial):** dashboard has run-freshness tiles, confidence
   chart, obs map. Wanted next: forecast-vs-observed overlay plots,
   per-lead-time skill curves, alerting on new runs.
@@ -39,12 +45,12 @@ Owner: Jack (boat: Stingray). Racing focus: Balearics / W Med
 
 ## Immediate next step
 
-Run `python scripts/live_smoke_phase2.py` (needs runs on disk:
-`python -m gribbosaurus_rex fetch-once`). Fix whatever the live METAR
-API returns that the parser doesn't expect — the parsing in
-`obs/sources.py:fetch_metar` was written blind against the documented
-JSON format (`obsTime` epoch, `wspd` kn, `wdir` int|"VRB", `altim`/`slp`
-hPa) and hasn't seen real payloads yet. Same caveat for NDBC.
+Phase 2 live verification is done (see above). Next up per the roadmap:
+turn on `observations.nmea.enabled` and test with `scripts/nmea_sim.py`
+against the real dashboard/listener, then import a real Expedition log
+and backtest scores over a past race. NDBC still hasn't seen a real
+payload — if buoy stations get added to a future race config, treat
+`obs/sources.py:fetch_ndbc` as unverified against live data until then.
 
 ## Verify/scoring design (the important bit)
 
@@ -99,7 +105,8 @@ hPa) and hasn't seen real payloads yet. Same caveat for NDBC.
 
 ## Roadmap next steps (in rough order)
 
-1. Live-verify Phase 2 (smoke script above), fix parser drift.
+1. ~~Live-verify Phase 2 (smoke script above), fix parser drift.~~ Done
+   2026-07-13 — passed clean, no fixes needed.
 2. Turn on `observations.nmea.enabled` + test with `scripts/nmea_sim.py`.
 3. Import a real Expedition log, backtest scores over a past race.
 4. Phase 3 dashboard: forecast-vs-observed overlay per station/boat,
