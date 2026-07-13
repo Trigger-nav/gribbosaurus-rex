@@ -43,15 +43,20 @@ def nmea(body: str) -> bytes:
 
 
 def nmea_loopback(cfg, obs_store) -> bool:
-    """Start the listener on a scratch port, fire sentences, expect an obs."""
+    """Start the listener on a scratch port, fire sentences, expect an obs.
+
+    Uses source="test" (excluded from verification/scoring by design) and
+    purges its rows afterwards — smoke data must never pollute confidence.
+    """
     from dataclasses import replace
 
-    from gribbosaurus_rex.config import NmeaConfig, ObsConfig
+    from gribbosaurus_rex.config import NmeaConfig
     from gribbosaurus_rex.obs.nmea import NmeaListener
 
     port = 10199
     cfg2 = replace(cfg, obs=replace(cfg.obs, nmea=NmeaConfig(True, "udp", port)))
-    listener = NmeaListener(cfg2, obs_store, emit_interval_s=0.0, boat="smoke-boat")
+    listener = NmeaListener(cfg2, obs_store, emit_interval_s=0.0,
+                            boat="smoke-boat", source="test")
     listener.start()
     time.sleep(0.5)
 
@@ -64,8 +69,9 @@ def nmea_loopback(cfg, obs_store) -> bool:
     time.sleep(1.5)
     listener.stop()
 
-    got = [o for o in obs_store.recent_obs(0.1, source="yacht")
+    got = [o for o in obs_store.recent_obs(0.1, source="test")
            if o.station == "smoke-boat"]
+    obs_store.purge_station("smoke-boat")
     return bool(got)
 
 
@@ -88,8 +94,9 @@ def main() -> int:
         recent = obs_store.recent_obs(3, source="metar")
         print(f"  {len(recent)} METAR obs in the last 3h")
         for o in recent[:5]:
-            print(f"    {o.station} {o.time} {o.wind_speed_kn}kn/{o.wind_dir_deg}° "
-                  f"{o.pressure_hpa}hPa @({o.lat:.2f},{o.lon:.2f})")
+            print(f"    {o.station} {o.time} {o.wind_speed_ms}m/s/"
+                  f"{o.wind_dir_deg}° {o.pressure_hpa}hPa "
+                  f"@({o.lat:.2f},{o.lon:.2f})")
         if not recent:
             failures.append("no METAR obs in window (empty bbox? API change?)")
     except Exception as e:  # noqa: BLE001
@@ -117,6 +124,29 @@ def main() -> int:
             failures.append("no scores computed")
     except Exception as e:  # noqa: BLE001
         failures.append(f"scores: {e}")
+
+    print("\n=== 3b. scores.json (Stingray artefact) ===")
+    try:
+        import json
+
+        from gribbosaurus_rex.publish import publish
+
+        path = publish(cfg, obs_store)
+        doc = json.loads(path.read_text())
+        print(f"  {path} — schema {doc['schema_version']}, "
+              f"{len(doc['scores'])} entries")
+        for e in doc["scores"][:6]:
+            print(f"    {e['model']:16s} lead {e['lead_h_bucket']} "
+                  f"score {e['score']} ({e['obs_count']} obs, "
+                  f"rmse {e['metrics'].get('wind_rmse_ms')} m/s)")
+        if doc["schema_version"] != "1.0":
+            failures.append("scores.json wrong schema_version")
+        bad_names = [e["model"] for e in doc["scores"]
+                     if e["model"] in ("ifs", "gfs", "aifs", "icon_eu")]
+        if bad_names:
+            failures.append(f"unmapped internal model names published: {bad_names}")
+    except Exception as e:  # noqa: BLE001
+        failures.append(f"publish: {e}")
 
     print("\n=== 4. NMEA loopback ===")
     try:

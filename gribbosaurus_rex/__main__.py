@@ -38,6 +38,7 @@ def main(argv: list[str] | None = None) -> int:
     si.add_argument("--boat", default="yacht")
     sub.add_parser("verify-once")
     sub.add_parser("scores")
+    sub.add_parser("arbiter-once")  # fetch + verify + publish scores.json
 
     args = p.parse_args(argv)
     logging.basicConfig(
@@ -77,14 +78,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "point":
-        from gribbosaurus_rex.extract import latest_point_forecasts
+        from gribbosaurus_rex.extract import MS_TO_KN, latest_point_forecasts
 
         df = latest_point_forecasts(cfg, args.lat, args.lon)
         if df.empty:
             print("No model runs on disk yet — run fetch-once first.")
             return 1
-        with_opts = df.groupby("model").head(8)
-        print(with_opts.to_string(index=False))
+        df = df.copy()
+        df["wind_kn"] = (df["wind_speed_ms"] * MS_TO_KN).round(1)  # display
+        cols = ["time", "wind_kn", "wind_speed_ms", "wind_dir", "pressure",
+                "model", "cycle"]
+        print(df[cols].groupby("model").head(8).to_string(index=False))
         return 0
 
     if args.cmd == "serve":
@@ -127,6 +131,22 @@ def main(argv: list[str] | None = None) -> int:
         for m, s in sorted(latest.items()):
             print(f"  {m:8s} {s:.3f}")
         return 0
+
+    if args.cmd == "arbiter-once":
+        # The Stingray arbiter's cron entrypoint: fetch new runs, fetch
+        # obs, verify, publish scores.json. One pass, then exit.
+        from gribbosaurus_rex.scheduler import check_all, obs_and_verify_pass
+        from gribbosaurus_rex.store.runs import RunStore
+
+        run_store = RunStore(cfg.db_path)
+        fetched = check_all(cfg, run_store)
+        result = obs_and_verify_pass(cfg, run_store)
+        new_runs = {m: c for m, c in fetched.items() if c}
+        print(f"runs fetched:      {new_runs or 'none new'}")
+        print(f"new obs:           {result['new_obs']}")
+        print(f"new verifications: {result['new_verifications']}")
+        print(f"published:         {result.get('published', 'FAILED')}")
+        return 0 if result.get("published") else 1
 
     return 1
 

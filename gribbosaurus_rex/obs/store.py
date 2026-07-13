@@ -19,14 +19,14 @@ from pathlib import Path
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS obs (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    source        TEXT NOT NULL,          -- yacht | metar | ndbc | openmeteo
+    source        TEXT NOT NULL,          -- yacht | metar | ndbc | openmeteo | test
     station       TEXT NOT NULL,          -- ICAO id, buoy id, boat name
     lat           REAL NOT NULL,
     lon           REAL NOT NULL,
     time          TEXT NOT NULL,          -- ISO8601 UTC
-    wind_speed_kn REAL,
-    wind_dir_deg  REAL,
-    gust_kn       REAL,
+    wind_speed_ms REAL,                   -- SI internally (contract alignment)
+    wind_dir_deg  REAL,                   -- degrees true, "coming from"
+    gust_ms       REAL,
     pressure_hpa  REAL,
     created_at    TEXT NOT NULL,
     UNIQUE (source, station, time)
@@ -40,11 +40,11 @@ CREATE TABLE IF NOT EXISTS verification (
     model         TEXT NOT NULL,
     cycle         TEXT NOT NULL,          -- run cycle ISO8601 UTC
     lead_hours    REAL NOT NULL,
-    fc_wind_speed REAL,
+    fc_wind_speed REAL,                   -- m/s
     fc_wind_dir   REAL,
     fc_pressure   REAL,
-    err_vector_kn REAL,                   -- |forecast - observed| wind vector
-    err_speed_kn  REAL,                   -- signed: forecast - observed
+    err_vector_ms REAL,                   -- |forecast - observed| wind vector, m/s
+    err_speed_ms  REAL,                   -- signed: forecast - observed, m/s
     err_dir_deg   REAL,                   -- circular, unsigned
     err_press_hpa REAL,                   -- signed: forecast - observed
     created_at    TEXT NOT NULL,
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS scores (
     model         TEXT NOT NULL,
     score         REAL NOT NULL,          -- 0..1 confidence
     n_obs         INTEGER NOT NULL,
-    rmse_vector_kn REAL,
+    rmse_vector_ms REAL,
     mean_dir_err  REAL,
     mean_press_bias REAL,
     UNIQUE (time, model)
@@ -79,9 +79,9 @@ class Obs:
     lat: float
     lon: float
     time: str
-    wind_speed_kn: float | None
+    wind_speed_ms: float | None
     wind_dir_deg: float | None
-    gust_kn: float | None
+    gust_ms: float | None
     pressure_hpa: float | None
     created_at: str
 
@@ -102,21 +102,30 @@ class ObsStore:
     # -- observations ---------------------------------------------------
 
     def insert_obs(self, *, source: str, station: str, lat: float, lon: float,
-                   time_iso: str, wind_speed_kn: float | None = None,
+                   time_iso: str, wind_speed_ms: float | None = None,
                    wind_dir_deg: float | None = None,
-                   gust_kn: float | None = None,
+                   gust_ms: float | None = None,
                    pressure_hpa: float | None = None) -> bool:
-        """Insert one observation. Returns True if new, False if duplicate."""
+        """Insert one observation (SI units). Returns True if new."""
         cur = self._conn.execute(
             """INSERT OR IGNORE INTO obs
-               (source, station, lat, lon, time, wind_speed_kn, wind_dir_deg,
-                gust_kn, pressure_hpa, created_at)
+               (source, station, lat, lon, time, wind_speed_ms, wind_dir_deg,
+                gust_ms, pressure_hpa, created_at)
                VALUES (?,?,?,?,?,?,?,?,?,?)""",
-            (source, station, lat, lon, time_iso, wind_speed_kn, wind_dir_deg,
-             gust_kn, pressure_hpa, _now()),
+            (source, station, lat, lon, time_iso, wind_speed_ms, wind_dir_deg,
+             gust_ms, pressure_hpa, _now()),
         )
         self._conn.commit()
         return cur.rowcount > 0
+
+    def purge_station(self, station: str) -> int:
+        """Delete a station's obs + their verifications (test cleanup)."""
+        self._conn.execute(
+            """DELETE FROM verification WHERE obs_id IN
+               (SELECT id FROM obs WHERE station=?)""", (station,))
+        cur = self._conn.execute("DELETE FROM obs WHERE station=?", (station,))
+        self._conn.commit()
+        return cur.rowcount
 
     def recent_obs(self, window_h: float, source: str | None = None) -> list[Obs]:
         cutoff = (datetime.now(timezone.utc)
@@ -151,18 +160,18 @@ class ObsStore:
     def insert_verification(self, *, obs_id: int, model: str, cycle: str,
                             lead_hours: float, fc_wind_speed: float | None,
                             fc_wind_dir: float | None, fc_pressure: float | None,
-                            err_vector_kn: float | None,
-                            err_speed_kn: float | None,
+                            err_vector_ms: float | None,
+                            err_speed_ms: float | None,
                             err_dir_deg: float | None,
                             err_press_hpa: float | None) -> None:
         self._conn.execute(
             """INSERT OR IGNORE INTO verification
                (obs_id, model, cycle, lead_hours, fc_wind_speed, fc_wind_dir,
-                fc_pressure, err_vector_kn, err_speed_kn, err_dir_deg,
+                fc_pressure, err_vector_ms, err_speed_ms, err_dir_deg,
                 err_press_hpa, created_at)
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
             (obs_id, model, cycle, lead_hours, fc_wind_speed, fc_wind_dir,
-             fc_pressure, err_vector_kn, err_speed_kn, err_dir_deg,
+             fc_pressure, err_vector_ms, err_speed_ms, err_dir_deg,
              err_press_hpa, _now()),
         )
         self._conn.commit()
@@ -179,15 +188,15 @@ class ObsStore:
     # -- scores -----------------------------------------------------------
 
     def insert_score(self, *, time_iso: str, model: str, score: float,
-                     n_obs: int, rmse_vector_kn: float | None,
+                     n_obs: int, rmse_vector_ms: float | None,
                      mean_dir_err: float | None,
                      mean_press_bias: float | None) -> None:
         self._conn.execute(
             """INSERT OR REPLACE INTO scores
-               (time, model, score, n_obs, rmse_vector_kn, mean_dir_err,
+               (time, model, score, n_obs, rmse_vector_ms, mean_dir_err,
                 mean_press_bias)
                VALUES (?,?,?,?,?,?,?)""",
-            (time_iso, model, score, n_obs, rmse_vector_kn, mean_dir_err,
+            (time_iso, model, score, n_obs, rmse_vector_ms, mean_dir_err,
              mean_press_bias),
         )
         self._conn.commit()

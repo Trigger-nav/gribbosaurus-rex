@@ -55,8 +55,9 @@ trust:
   openmeteo: 0.4
 
 scoring:
-  window_h: 48             # verification window for the rolling score
+  window_h: 48             # racing-profile rolling window (dashboard trend)
   half_weight_nm: 30       # obs at this distance from the yacht counts 50%
   lead_half_h: 24          # forecast lead at which weight halves
   recency_half_h: 12       # obs age at which weight halves
-  err_scale_kn: 5.0        # vector error mapping: score = exp(-rmse/scale)
+  err_scale_ms: 2.5        # SI. score = exp(-rmse_ms/scale); ≈ old 5kn
+  publish_window_h: 24     # arbiter obs window, published as obs_window_h

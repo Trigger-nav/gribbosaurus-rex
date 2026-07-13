@@ -64,7 +64,9 @@ def verify_pass(cfg: RaceConfig, run_store: RunStore, obs_store: ObsStore) -> in
                      for m in cfg.models}
 
     for ob in observations:
-        if ob.wind_speed_kn is None:
+        if ob.source == "test":
+            continue  # smoke/loopback data: stored, never scored
+        if ob.wind_speed_ms is None:
             continue
         if not cfg.bbox.padded(0.5).contains(ob.lat, ob.lon):
             continue
@@ -84,17 +86,17 @@ def verify_pass(cfg: RaceConfig, run_store: RunStore, obs_store: ObsStore) -> in
                 except Exception:  # noqa: BLE001
                     log.exception("value_at failed: %s %s", model, rec.cycle)
                     continue
-                if fc["wind_speed"] is None or np.isnan(fc["wind_speed"]):
+                if fc["wind_speed_ms"] is None or np.isnan(fc["wind_speed_ms"]):
                     continue
 
                 err_vec = err_dir = None
                 if ob.wind_dir_deg is not None:
                     err_vec = float(wind_vector_error(
-                        fc["wind_speed"], fc["wind_dir"],
-                        ob.wind_speed_kn, ob.wind_dir_deg))
+                        fc["wind_speed_ms"], fc["wind_dir"],
+                        ob.wind_speed_ms, ob.wind_dir_deg))
                     err_dir = float(direction_error(fc["wind_dir"],
                                                     ob.wind_dir_deg))
-                err_spd = float(fc["wind_speed"] - ob.wind_speed_kn)
+                err_spd = float(fc["wind_speed_ms"] - ob.wind_speed_ms)
                 err_prs = None
                 if ob.pressure_hpa is not None and not np.isnan(fc["pressure"]):
                     err_prs = float(fc["pressure"] - ob.pressure_hpa)
@@ -102,11 +104,11 @@ def verify_pass(cfg: RaceConfig, run_store: RunStore, obs_store: ObsStore) -> in
                 obs_store.insert_verification(
                     obs_id=ob.id, model=model, cycle=rec.cycle,
                     lead_hours=round(lead_h, 2),
-                    fc_wind_speed=round(fc["wind_speed"], 2),
+                    fc_wind_speed=round(fc["wind_speed_ms"], 3),
                     fc_wind_dir=round(fc["wind_dir"], 1),
                     fc_pressure=(None if np.isnan(fc["pressure"])
                                  else round(fc["pressure"], 1)),
-                    err_vector_kn=err_vec, err_speed_kn=err_spd,
+                    err_vector_ms=err_vec, err_speed_ms=err_spd,
                     err_dir_deg=err_dir, err_press_hpa=err_prs)
                 added += 1
 
@@ -129,7 +131,7 @@ def compute_scores(cfg: RaceConfig, obs_store: ObsStore,
     rows = obs_store.verifications_window(cfg.scoring.window_h)
     per_model: dict[str, list[tuple[float, float, float, float]]] = {}
     for r in rows:
-        if r["err_vector_kn"] is None:
+        if r["err_vector_ms"] is None or r["source"] == "test":
             continue
         d_nm = haversine_nm(anchor[0], anchor[1], r["lat"], r["lon"])
         age_h = (now - datetime.fromisoformat(r["obs_time"])) \
@@ -139,7 +141,7 @@ def compute_scores(cfg: RaceConfig, obs_store: ObsStore,
              * _half_life_weight(r["lead_hours"], cfg.scoring.lead_half_h)
              * _half_life_weight(age_h, cfg.scoring.recency_half_h))
         per_model.setdefault(r["model"], []).append(
-            (w, r["err_vector_kn"], r["err_dir_deg"] or 0.0,
+            (w, r["err_vector_ms"], r["err_dir_deg"] or 0.0,
              r["err_press_hpa"] if r["err_press_hpa"] is not None else np.nan))
 
     t_iso = now.isoformat(timespec="seconds")
@@ -155,13 +157,13 @@ def compute_scores(cfg: RaceConfig, obs_store: ObsStore,
         if w.sum() <= 0:
             continue
         rmse = float(np.sqrt(np.sum(w * ev ** 2) / w.sum()))
-        score = float(np.exp(-rmse / cfg.scoring.err_scale_kn))
+        score = float(np.exp(-rmse / cfg.scoring.err_scale_ms))
         press_bias = (float(np.nansum(w * ep) / w.sum())
                       if not np.all(np.isnan(ep)) else None)
         scores[model] = score
         obs_store.insert_score(
             time_iso=t_iso, model=model, score=round(score, 4),
-            n_obs=len(samples), rmse_vector_kn=round(rmse, 3),
+            n_obs=len(samples), rmse_vector_ms=round(rmse, 3),
             mean_dir_err=round(float(np.sum(w * ed) / w.sum()), 1),
             mean_press_bias=(round(press_bias, 2)
                              if press_bias is not None else None))

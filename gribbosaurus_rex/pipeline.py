@@ -13,7 +13,7 @@ import pandas as pd
 
 from gribbosaurus_rex.config import RaceConfig, load_config
 from gribbosaurus_rex.core.wind import to_speed_dir
-from gribbosaurus_rex.extract import MS_TO_KN, open_run
+from gribbosaurus_rex.extract import open_run
 from gribbosaurus_rex.store.runs import RunStore
 
 log = logging.getLogger("gribbo.pipeline")
@@ -49,8 +49,9 @@ def generate_grid(cfg: RaceConfig, step: float = 0.25):
 def run(cfg: RaceConfig | None = None, valid_time=None, step: float = 0.25) -> pd.DataFrame:
     """Blend the newest complete run of each configured model onto a grid.
 
-    Returns lat, lon, speed (kn), direction (deg FROM), uncertainty (kn,
-    mean abs model-to-blend wind-speed spread), n_models.
+    Returns lat, lon, speed_ms (SI), direction (deg true, FROM),
+    uncertainty_ms (mean abs model-to-blend wind-speed spread), n_models.
+    Display layers convert to knots at the boundary.
     """
     import xarray as xr
 
@@ -111,9 +112,9 @@ def run(cfg: RaceConfig | None = None, valid_time=None, step: float = 0.25) -> p
     return pd.DataFrame({
         "lat": lat_grid.ravel(),
         "lon": lon_grid.ravel(),
-        "speed": (speed_ms * MS_TO_KN).ravel(),
+        "speed_ms": speed_ms.ravel(),
         "direction": direction.ravel(),
-        "uncertainty": (uncertainty_ms * MS_TO_KN).ravel(),
+        "uncertainty_ms": uncertainty_ms.ravel(),
         "n_models": len(fields),
     })
 

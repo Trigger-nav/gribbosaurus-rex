@@ -84,7 +84,7 @@ def main() -> int:
             failures.append("extraction returned no data")
         else:
             print(df.groupby("model").head(2).to_string(index=False))
-            bad = df[(df.wind_speed < 0) | (df.wind_speed > 150)]
+            bad = df[(df.wind_speed_ms < 0) | (df.wind_speed_ms > 75)]
             if not bad.empty:
                 failures.append("implausible wind speeds decoded")
 

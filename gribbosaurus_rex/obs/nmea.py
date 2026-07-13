@@ -29,6 +29,7 @@ from gribbosaurus_rex.obs.store import ObsStore
 log = logging.getLogger("gribbo.nmea")
 
 MS_TO_KN = 1.943844
+KN_TO_MS = 0.514444
 KMH_TO_KN = 0.539957
 
 
@@ -139,12 +140,16 @@ class NmeaState:
 
 class NmeaListener(threading.Thread):
     def __init__(self, cfg: RaceConfig, store: ObsStore,
-                 emit_interval_s: float = 60.0, boat: str = "yacht"):
+                 emit_interval_s: float = 60.0, boat: str = "yacht",
+                 source: str = "yacht"):
         super().__init__(daemon=True, name="gribbo-nmea")
         self.cfg = cfg
         self.store = store
         self.emit_interval_s = emit_interval_s
         self.boat = boat
+        # Smoke/loopback tests pass source="test": stored and visible, but
+        # excluded from verification and scoring (never pollutes confidence).
+        self.source = source
         self.state = NmeaState()
         self._stop = threading.Event()
         self._last_emit = 0.0
@@ -156,14 +161,15 @@ class NmeaListener(threading.Thread):
         snap = self.state.snapshot()
         if snap is None:
             return
-        lat, lon, tws, twd, press = snap
+        lat, lon, tws_kn, twd, press = snap
         self._last_emit = now
         self.store.insert_obs(
-            source="yacht", station=self.boat, lat=lat, lon=lon,
+            source=self.source, station=self.boat, lat=lat, lon=lon,
             time_iso=datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            wind_speed_kn=tws, wind_dir_deg=twd, pressure_hpa=press)
+            wind_speed_ms=tws_kn * KN_TO_MS,  # NMEA is knots; store SI
+            wind_dir_deg=twd, pressure_hpa=press)
         log.info("yacht obs: %.4f,%.4f %skn @%s %s",
-                 lat, lon, round(tws, 1), twd, press or "-")
+                 lat, lon, round(tws_kn, 1), twd, press or "-")
 
     def run(self) -> None:
         transport = self.cfg.obs.nmea.transport

@@ -44,11 +44,24 @@ python -m gribbosaurus_rex status          # what's on disk
 python -m gribbosaurus_rex point 39.5 2.6  # all-model forecast at a point
 python -m gribbosaurus_rex verify-once     # fetch obs, verify, score models
 python -m gribbosaurus_rex scores          # latest confidence per model
+python -m gribbosaurus_rex arbiter-once    # fetch+verify+publish scores.json
 python -m gribbosaurus_rex import-log x.csv  # backtest an Expedition log
 python -m gribbosaurus_rex watch           # poll runs+obs+verify forever
 python -m gribbosaurus_rex serve           # API on :8000 (+ poller + NMEA)
 streamlit run dashboard/app.py             # dashboard on :8501
 ```
+
+**Units:** SI internally (m/s, contract alignment with Stingray — see
+`docs/integration/`); knots only at display boundaries. Migrating a
+pre-SI database: `python scripts/migrate_to_si.py`.
+
+**Stingray arbiter:** the published artefact is `data/scores.json`
+(schema 1.0), also served at `GET /scores.json` with ETag/Last-Modified.
+Per (model, region, lead bucket 0-12/12-24/24-48h); model names are
+Stingray's (`ecmwf_ifs`, `nomads_gfs_ww3`, ...). Derivation:
+`score = exp(-weighted_wind_vector_rmse_ms / err_scale_ms)`, weights =
+source trust × recency half-life (no distance anchor in the arbiter
+profile — see `docs/integration/DECISIONS.md`).
 
 Live yacht feed: set `observations.nmea.enabled: true` in the race config
 and point Expedition's network output (NMEA 0183, UDP port 10110) at the

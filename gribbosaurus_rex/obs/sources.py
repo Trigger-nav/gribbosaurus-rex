@@ -19,7 +19,7 @@ log = logging.getLogger("gribbo.obs")
 METAR_API = "https://aviationweather.gov/api/data/metar"
 NDBC_RT2 = "https://www.ndbc.noaa.gov/data/realtime2"
 
-MS_TO_KN = 1.943844
+KN_TO_MS = 0.514444  # METAR wspd is knots; internal storage is SI (m/s)
 
 _session = requests.Session()
 _session.headers["User-Agent"] = "gribbosaurus-rex/0.2 (marine verification)"
@@ -58,10 +58,10 @@ def fetch_metar(cfg: RaceConfig, store: ObsStore) -> int:
 
             wdir = rep.get("wdir")
             wdir = None if wdir in (None, "VRB", "") else float(wdir)
-            wspd = rep.get("wspd")          # already knots in this API
-            wspd = None if wspd is None else float(wspd)
+            wspd = rep.get("wspd")          # knots in this API -> store m/s
+            wspd = None if wspd is None else float(wspd) * KN_TO_MS
             gust = rep.get("wgst")
-            gust = None if gust in (None, "") else float(gust)
+            gust = None if gust in (None, "") else float(gust) * KN_TO_MS
             # altim is hPa in the JSON API; slp (sea-level pressure) preferred
             press = rep.get("slp") or rep.get("altim")
             press = None if press in (None, "") else float(press)
@@ -72,8 +72,8 @@ def fetch_metar(cfg: RaceConfig, store: ObsStore) -> int:
                 continue
             new += store.insert_obs(
                 source="metar", station=str(station), lat=lat, lon=lon,
-                time_iso=t, wind_speed_kn=wspd, wind_dir_deg=wdir,
-                gust_kn=gust, pressure_hpa=press)
+                time_iso=t, wind_speed_ms=wspd, wind_dir_deg=wdir,
+                gust_ms=gust, pressure_hpa=press)
         except (KeyError, TypeError, ValueError) as e:
             log.debug("skipping METAR record (%s): %r", e, str(rep)[:200])
     log.info("metar: %d new obs", new)
@@ -137,9 +137,9 @@ def fetch_ndbc(cfg: RaceConfig, store: ObsStore) -> int:
                 new += store.insert_obs(
                     source="ndbc", station=str(sid), lat=lat, lon=lon,
                     time_iso=t.isoformat(timespec="seconds"),
-                    wind_speed_kn=val("WSPD", MS_TO_KN),
+                    wind_speed_ms=val("WSPD"),   # NDBC is already m/s
                     wind_dir_deg=val("WDIR"),
-                    gust_kn=val("GST", MS_TO_KN),
+                    gust_ms=val("GST"),
                     pressure_hpa=val("PRES"))
         except requests.RequestException as e:
             log.warning("ndbc %s: %s", sid, e)

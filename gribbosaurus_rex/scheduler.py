@@ -99,6 +99,12 @@ def obs_and_verify_pass(cfg: RaceConfig, run_store: RunStore) -> dict:
         result["scores"] = compute_scores(cfg, obs_store)
     except Exception:  # noqa: BLE001
         log.exception("verification pass failed")
+    try:
+        from gribbosaurus_rex.publish import publish
+
+        result["published"] = str(publish(cfg, obs_store))
+    except Exception:  # noqa: BLE001
+        log.exception("scores.json publish failed")
     return result
 
 

@@ -65,11 +65,12 @@ class ObsConfig:
 
 @dataclass(frozen=True)
 class ScoringConfig:
-    window_h: float = 48.0
+    window_h: float = 48.0          # racing-profile rolling window
     half_weight_nm: float = 30.0
     lead_half_h: float = 24.0
     recency_half_h: float = 12.0
-    err_scale_kn: float = 5.0
+    err_scale_ms: float = 2.5       # SI; ≈ the old 5kn scale
+    publish_window_h: float = 24.0  # arbiter/scores.json obs window
 
 
 DEFAULT_TRUST = {"yacht": 1.0, "metar": 0.85, "ndbc": 0.9, "openmeteo": 0.4}
@@ -140,12 +141,17 @@ def load_config(path: str | os.PathLike | None = None) -> RaceConfig:
     )
 
     sc_raw = raw.get("scoring", {}) or {}
+    # legacy key support: err_scale_kn (pre-SI configs) -> m/s
+    err_scale_ms = sc_raw.get("err_scale_ms")
+    if err_scale_ms is None and "err_scale_kn" in sc_raw:
+        err_scale_ms = float(sc_raw["err_scale_kn"]) * 0.514444
     scoring = ScoringConfig(
         window_h=float(sc_raw.get("window_h", 48)),
         half_weight_nm=float(sc_raw.get("half_weight_nm", 30)),
         lead_half_h=float(sc_raw.get("lead_half_h", 24)),
         recency_half_h=float(sc_raw.get("recency_half_h", 12)),
-        err_scale_kn=float(sc_raw.get("err_scale_kn", 5.0)),
+        err_scale_ms=float(err_scale_ms if err_scale_ms is not None else 2.5),
+        publish_window_h=float(sc_raw.get("publish_window_h", 24)),
     )
 
     trust = dict(DEFAULT_TRUST)

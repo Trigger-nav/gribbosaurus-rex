@@ -45,7 +45,8 @@ def test_phase2_config_loads():
     assert cfg.trust_for("yacht") == 1.0
     assert cfg.trust_for("unknown-source") == 0.5
     assert abs(cfg.anchor()[0] - 39.45) < 1e-9  # configured focus point
-    assert cfg.scoring.err_scale_kn == 5.0
+    assert cfg.scoring.err_scale_ms == 2.5
+    assert cfg.scoring.publish_window_h == 24
 
 
 # ---------------------------------------------------------------- obs store
@@ -55,11 +56,11 @@ def test_obs_store_roundtrip_and_dedup():
         store = ObsStore(Path(td) / "t.sqlite")
         t = _iso(datetime.now(UTC) - timedelta(minutes=10))
         assert store.insert_obs(source="metar", station="LEPA", lat=39.55,
-                                lon=2.74, time_iso=t, wind_speed_kn=12,
+                                lon=2.74, time_iso=t, wind_speed_ms=12,
                                 wind_dir_deg=70, pressure_hpa=1013)
         # exact duplicate must be ignored
         assert not store.insert_obs(source="metar", station="LEPA", lat=39.55,
-                                    lon=2.74, time_iso=t, wind_speed_kn=12,
+                                    lon=2.74, time_iso=t, wind_speed_ms=12,
                                     wind_dir_deg=70, pressure_hpa=1013)
         assert len(store.recent_obs(1.0)) == 1
         assert store.recent_obs(1.0, source="yacht") == []
@@ -70,11 +71,11 @@ def test_yacht_latest_freshness():
         store = ObsStore(Path(td) / "t.sqlite")
         stale = _iso(datetime.now(UTC) - timedelta(hours=12))
         store.insert_obs(source="yacht", station="stingray", lat=39.4, lon=2.5,
-                         time_iso=stale, wind_speed_kn=10, wind_dir_deg=60)
+                         time_iso=stale, wind_speed_ms=10, wind_dir_deg=60)
         assert store.yacht_latest(max_age_h=6) is None
         fresh = _iso(datetime.now(UTC) - timedelta(minutes=5))
         store.insert_obs(source="yacht", station="stingray", lat=39.5, lon=2.6,
-                         time_iso=fresh, wind_speed_kn=11, wind_dir_deg=65)
+                         time_iso=fresh, wind_speed_ms=11, wind_dir_deg=65)
         y = store.yacht_latest(max_age_h=6)
         assert y is not None and abs(y.lat - 39.5) < 1e-9
 
@@ -169,14 +170,14 @@ def _seeded_store(td: Path, err_good: float, err_bad: float) -> ObsStore:
     for i in range(6):
         t = _iso(now - timedelta(hours=i))
         store.insert_obs(source="metar", station=f"S{i}", lat=39.5, lon=2.6,
-                         time_iso=t, wind_speed_kn=12, wind_dir_deg=70,
+                         time_iso=t, wind_speed_ms=12, wind_dir_deg=70,
                          pressure_hpa=1013)
         ob = store.recent_obs(cfg_window := 48)[0]
         for model, err in (("ifs", err_good), ("gfs", err_bad)):
             store.insert_verification(
                 obs_id=ob.id, model=model, cycle=_iso(now - timedelta(hours=12)),
                 lead_hours=12 - i, fc_wind_speed=12 + err, fc_wind_dir=70,
-                fc_pressure=1013, err_vector_kn=err, err_speed_kn=err,
+                fc_pressure=1013, err_vector_ms=err, err_speed_ms=err,
                 err_dir_deg=0.0, err_press_hpa=0.0)
     return store
 
@@ -212,20 +213,42 @@ def test_confidence_distance_weighting():
                                        ("FAR", 44.5, 8.0, 10.0)):
             t = _iso(now - timedelta(minutes=30))
             store.insert_obs(source="metar", station=station, lat=lat, lon=lon,
-                             time_iso=t, wind_speed_kn=10, wind_dir_deg=90)
+                             time_iso=t, wind_speed_ms=10, wind_dir_deg=90)
             ob = [o for o in store.recent_obs(48) if o.station == station][0]
             store.insert_verification(
                 obs_id=ob.id, model="ifs", cycle=_iso(now - timedelta(hours=6)),
                 lead_hours=5.5, fc_wind_speed=10 + err, fc_wind_dir=90,
-                fc_pressure=None, err_vector_kn=err, err_speed_kn=err,
+                fc_pressure=None, err_vector_ms=err, err_speed_ms=err,
                 err_dir_deg=0.0, err_press_hpa=None)
         cfg_focus = RaceConfig(
             name="t", bbox=cfg.bbox, models=("ifs",),
             obs=__import__("gribbosaurus_rex.config", fromlist=["ObsConfig"])
             .ObsConfig(focus_lat=40.0, focus_lon=2.0))
         scores = compute_scores(cfg_focus, store)
-        # weighted rmse should sit near the NEAR error (1kn), not the mean
-        assert scores["ifs"] > np.exp(-4.0 / 5.0)
+        # weighted rmse should sit near the NEAR error (1 m/s), not the mean
+        assert scores["ifs"] > np.exp(-2.0 / 2.5)
+
+
+def test_test_source_never_scored():
+    """source='test' obs are stored but excluded from confidence."""
+    cfg = RaceConfig(name="t", bbox=BBox(38.0, 40.5, 0.5, 3.5), models=("ifs",))
+    now = datetime.now(UTC)
+    with tempfile.TemporaryDirectory() as td:
+        store = ObsStore(Path(td) / "t.sqlite")
+        t = _iso(now - timedelta(minutes=10))
+        store.insert_obs(source="test", station="smoke-boat", lat=39.5,
+                         lon=2.6, time_iso=t, wind_speed_ms=50, wind_dir_deg=0)
+        ob = store.recent_obs(1.0, source="test")[0]
+        # even if a verification row sneaks in, scoring ignores it
+        store.insert_verification(
+            obs_id=ob.id, model="ifs", cycle=_iso(now - timedelta(hours=3)),
+            lead_hours=3, fc_wind_speed=5, fc_wind_dir=0, fc_pressure=None,
+            err_vector_ms=45.0, err_speed_ms=-45.0, err_dir_deg=0.0,
+            err_press_hpa=None)
+        assert compute_scores(cfg, store) == {}
+        # and purge_station removes both rows
+        assert store.purge_station("smoke-boat") == 1
+        assert store.verifications_window(48) == []
 
 
 if __name__ == "__main__":

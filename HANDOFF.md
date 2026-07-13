@@ -21,19 +21,13 @@ Owner: Jack (boat: Stingray). Racing focus: Balearics / W Med
   server-side bbox subset), DWD ICON-EU (regular lat-lon bz2). Probe-based
   run detection, SQLite run store + pruning, extraction to points/grids
   via cfgrib/xarray, CLI, FastAPI, Streamlit dashboard.
-- **Phase 2 (done, live-verified 2026-07-13):**
+- **Phase 2 (built, offline-tested; needs live verification):**
   observation store (obs/verification/scores tables in data/gribbo.sqlite),
   METAR bbox ingestion (aviationweather.gov JSON), NDBC buoys (optional),
   NMEA 0183 UDP/TCP listener (RMC/MWD/MDA/XDR/HDT/MWV, checksummed) for
   the live boat feed, Expedition CSV log importer (Excel-serial `Utc`
   supported), verification engine + rolling confidence scores, blend
   weights switch from priors to earned scores automatically.
-  `scripts/live_smoke_phase2.py` passed end-to-end against the real
-  aviationweather.gov METAR API (LECH/LEIB/LEPA, no parser changes
-  needed — `obs/sources.py:fetch_metar` already handled numeric
-  `wdir`/`"VRB"`/empty and the `slp`/`altim` fallback correctly) plus
-  the NMEA UDP loopback. NDBC untested live (no stations configured for
-  the Balearics bbox — it's a US/Atlantic network).
 - **Phase 3 (partial):** dashboard has run-freshness tiles, confidence
   chart, obs map. Wanted next: forecast-vs-observed overlay plots,
   per-lead-time skill curves, alerting on new runs.
@@ -45,12 +39,12 @@ Owner: Jack (boat: Stingray). Racing focus: Balearics / W Med
 
 ## Immediate next step
 
-Phase 2 live verification is done (see above). Next up per the roadmap:
-turn on `observations.nmea.enabled` and test with `scripts/nmea_sim.py`
-against the real dashboard/listener, then import a real Expedition log
-and backtest scores over a past race. NDBC still hasn't seen a real
-payload — if buoy stations get added to a future race config, treat
-`obs/sources.py:fetch_ndbc` as unverified against live data until then.
+Run `python scripts/live_smoke_phase2.py` (needs runs on disk:
+`python -m gribbosaurus_rex fetch-once`). Fix whatever the live METAR
+API returns that the parser doesn't expect — the parsing in
+`obs/sources.py:fetch_metar` was written blind against the documented
+JSON format (`obsTime` epoch, `wspd` kn, `wdir` int|"VRB", `altim`/`slp`
+hPa) and hasn't seen real payloads yet. Same caveat for NDBC.
 
 ## Verify/scoring design (the important bit)
 
@@ -103,16 +97,49 @@ payload — if buoy stations get added to a future race config, treat
   manual dashboard/listener testing (`python -m gribbosaurus_rex serve`
   with nmea.enabled: true, then run the sim).
 
+## Stingray integration (added 2026-07-13 — READ FIRST)
+
+Gribbosaurus is now the confirmed model-selection arbiter for the
+Stingray planner. The contract is `docs/integration/gribbosaurus-contract.md`
+(canonical copy lives in the Stingray repo; changes are negotiated and
+versioned). Our adopted decisions — including answers to the contract's
+three open questions, the SI-units migration, model-name mapping, the
+`scores.json` publisher design, and the arbiter-vs-racing weighting
+profiles — are in `docs/integration/DECISIONS.md`. Read both before any
+architectural change. Headline constraints: the product is a versioned
+`scores.json` per (model, region, lead bucket) served with ETag; data-only
+coupling (no imports either way); Stingray's ingest conventions exactly
+(SI internally, from-directions, ±180, UTC, land-never-calm); model ids
+`ecmwf_ifs` / `nomads_gfs_ww3`; cohosted-but-separable systemd/Caddy
+deployment; design headroom for blending, separate wave scores, and
+vessel-telemetry obs — don't build those yet.
+
 ## Roadmap next steps (in rough order)
 
-1. ~~Live-verify Phase 2 (smoke script above), fix parser drift.~~ Done
-   2026-07-13 — passed clean, no fixes needed.
-2. Turn on `observations.nmea.enabled` + test with `scripts/nmea_sim.py`.
-3. Import a real Expedition log, backtest scores over a past race.
-4. Phase 3 dashboard: forecast-vs-observed overlay per station/boat,
-   skill-by-lead-time chart, run-arrival notifications.
-5. Deployment: launchd/systemd service or small VPS (design is portable;
-   `serve` is the single long-running process).
-6. Phase 4: fit per-model corrections from the verification table
-   (start linear: speed gain + direction rotation per model per lead
-   bucket), apply at extraction, export corrected GRIBs.
+1. ~~Cleanup + guard~~ Done 2026-07-13: smoke loopback writes
+   `source="test"` (excluded from verify/scoring) and purges after itself;
+   `scripts/migrate_to_si.py` purges pre-guard `smoke-boat` rows.
+2. ~~SI migration~~ Done 2026-07-13 (code side): internals are m/s;
+   knots only at display/NMEA/METAR boundaries. **Run
+   `python scripts/migrate_to_si.py` once on any pre-SI database**, then
+   `verify-once` to rescore.
+3. ~~Model-id mapping~~ Done: `publish.PUBLISH_NAMES` (`ifs → ecmwf_ifs`,
+   `gfs → nomads_gfs_ww3`, ...); a test asserts every registry model has
+   a publish name.
+4. ~~`publish.py` + arbiter~~ Done: schema-1.0 `scores.json` per
+   (model, region, lead bucket), arbiter weighting profile, atomic write,
+   `GET /scores.json` with ETag/If-None-Match/Last-Modified,
+   `arbiter-once` CLI, auto-published every poller pass.
+   Not yet live-tested against a real accumulated verification DB.
+5. Turn on `observations.nmea.enabled` + test with `scripts/nmea_sim.py`;
+   import a real Expedition log, backtest a past race.
+6. Wave scoring: ECMWF wave stream + NOMADS gfswave fetchers (reuse
+   Stingray's verified endpoints/conventions), buoy wave obs (Puertos del
+   Estado/EMODnet), separate wave scores (schema 1.1 proposal).
+7. Phase 3 dashboard: forecast-vs-observed overlays, skill-by-lead-time,
+   run-arrival notifications.
+8. Deployment to the Hetzner cohost per contract §Deployment (`deploy/`
+   systemd + Caddy + cron; own `gribbo` user; shared eccodes).
+9. Phase 4: per-model corrections (company-umbrella IP per contract) —
+   fit from the verification table, apply at extraction, export
+   corrected GRIBs.

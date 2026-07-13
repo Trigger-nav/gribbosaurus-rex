@@ -21,6 +21,7 @@ from gribbosaurus_rex.obs.store import ObsStore
 log = logging.getLogger("gribbo.expedition")
 
 EXCEL_EPOCH = datetime(1899, 12, 30, tzinfo=timezone.utc)
+KN_TO_MS = 0.514444
 
 ALIASES = {
     "time": ("utc", "time", "datetime", "date"),
@@ -96,7 +97,8 @@ def import_log(path: str | Path, store: ObsStore, boat: str = "yacht",
         new += store.insert_obs(
             source="yacht", station=boat, lat=lat, lon=lon,
             time_iso=t.astimezone(timezone.utc).isoformat(timespec="seconds"),
-            wind_speed_kn=tws, wind_dir_deg=twd, pressure_hpa=baro)
+            wind_speed_ms=tws * KN_TO_MS,  # Expedition Tws is knots; store SI
+            wind_dir_deg=twd, pressure_hpa=baro)
 
     log.info("expedition import %s: %d obs added", path, new)
     return new

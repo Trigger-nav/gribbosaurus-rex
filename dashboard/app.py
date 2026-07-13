@@ -94,14 +94,17 @@ c1, c2 = st.columns(2)
 lat = c1.number_input("Latitude", value=39.5, format="%.3f")
 lon = c2.number_input("Longitude", value=2.6, format="%.3f")
 
+MS_TO_KN = 1.943844  # internals are SI; knots is a display convention
+
 if st.button("Get forecast"):
     data = api("/point", lat=lat, lon=lon)
     df = pd.DataFrame(data)
     df["time"] = pd.to_datetime(df["time"])
+    df["wind_speed_kn"] = df["wind_speed_ms"] * MS_TO_KN
 
     st.subheader("Wind speed (kn)")
     st.line_chart(df.pivot_table(index="time", columns="model",
-                                 values="wind_speed"))
+                                 values="wind_speed_kn"))
     st.subheader("Wind direction (° FROM)")
     st.line_chart(df.pivot_table(index="time", columns="model",
                                  values="wind_dir"))
@@ -117,6 +120,8 @@ st.header("Blended grid")
 if st.button("Run blended field"):
     data = api("/grid")
     df = pd.DataFrame(data)
+    df["speed_kn"] = df["speed_ms"] * MS_TO_KN
+    df["uncertainty_kn"] = df["uncertainty_ms"] * MS_TO_KN
     st.map(df.rename(columns={"lat": "latitude", "lon": "longitude"}),
            size=1, zoom=7)
     st.dataframe(df, use_container_width=True)
