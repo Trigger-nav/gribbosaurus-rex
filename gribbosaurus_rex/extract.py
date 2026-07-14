@@ -126,17 +126,11 @@ def _cached_run_dataset(run_dir: str, mtime_key: float, bbox_key):
 def open_run(rec: RunRecord, bbox=None):
     """Open a run's dataset with a small cache keyed on (path, mtime, bbox).
 
-    Pass the race bbox whenever you have it — it makes opening large-
-    domain models (ICON-EU especially) orders of magnitude cheaper. When
-    omitted, falls back to the active race config's bbox.
+    ALWAYS pass the race bbox when you have it — it makes opening large-
+    domain models (ICON-EU especially) orders of magnitude cheaper, and
+    in fleet mode it is what crops the shared files to the right race.
+    bbox=None decodes the file's full domain (slow; test/debug only).
     """
-    if bbox is None:
-        try:
-            from gribbosaurus_rex.config import load_config
-
-            bbox = load_config().bbox
-        except Exception:  # noqa: BLE001 — no config is fine, just slower
-            bbox = None
     run_dir = Path(rec.path)
     mtime = max((f.stat().st_mtime for f in run_dir.glob("*.grib2")), default=0.0)
     bbox_key = ((bbox.lat_min, bbox.lat_max, bbox.lon_min, bbox.lon_max)
@@ -144,9 +138,10 @@ def open_run(rec: RunRecord, bbox=None):
     return _cached_run_dataset(str(run_dir), mtime, bbox_key)
 
 
-def point_timeseries(rec: RunRecord, lat: float, lon: float) -> pd.DataFrame:
+def point_timeseries(rec: RunRecord, lat: float, lon: float,
+                     bbox=None) -> pd.DataFrame:
     """Full forecast time series at one location, from one model run."""
-    ds = open_run(rec)
+    ds = open_run(rec, bbox=bbox)
     pt = ds.interp(latitude=lat, longitude=lon, method="linear")
 
     u = pt["u10"].values
@@ -164,9 +159,10 @@ def point_timeseries(rec: RunRecord, lat: float, lon: float) -> pd.DataFrame:
     return out
 
 
-def value_at(rec: RunRecord, lat: float, lon: float, when: pd.Timestamp) -> dict:
+def value_at(rec: RunRecord, lat: float, lon: float, when: pd.Timestamp,
+             bbox=None) -> dict:
     """Model value interpolated to a single time/place (for verification)."""
-    ds = open_run(rec)
+    ds = open_run(rec, bbox=bbox)
     when = pd.Timestamp(when)
     if when.tzinfo is not None:
         when = when.tz_convert("UTC").tz_localize(None)
@@ -192,7 +188,7 @@ def latest_point_forecasts(cfg: RaceConfig, lat: float, lon: float) -> pd.DataFr
             log.info("no complete run yet for %s", model)
             continue
         try:
-            frames.append(point_timeseries(rec, lat, lon))
+            frames.append(point_timeseries(rec, lat, lon, bbox=cfg.bbox))
         except Exception:  # noqa: BLE001
             log.exception("extraction failed for %s %s", model, rec.cycle)
     if not frames:

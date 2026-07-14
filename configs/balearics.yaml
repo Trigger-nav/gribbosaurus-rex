@@ -3,6 +3,7 @@
 
 name: balearics-summer
 description: Palma Bay / Balearics training and racing area
+enabled: true
 
 # Bounding box (degrees). Longitudes in [-180, 180].
 bbox:

@@ -60,6 +60,9 @@ class FetchResult:
 class BaseFetcher(abc.ABC):
     #: registry key, e.g. "ifs"
     name: str = "?"
+    #: True when downloads are bbox-subset server-side (files on disk only
+    #: cover the fetch domain) — such runs refetch when the domain grows
+    region_subset: bool = False
     #: hours of the day at which cycles run
     cycle_hours: tuple[int, ...] = (0, 6, 12, 18)
     #: rough minimum delay between cycle time and publication (probe filter)

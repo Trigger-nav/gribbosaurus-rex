@@ -75,7 +75,7 @@ def run(cfg: RaceConfig | None = None, valid_time=None, step: float = 0.25) -> p
         if rec is None:
             continue
         try:
-            ds = open_run(rec)
+            ds = open_run(rec, bbox=cfg.bbox)
             pt = ds.interp(time=when, latitude=lat_da, longitude=lon_da,
                            method="linear")
             if np.isnan(pt["u10"].values).all():

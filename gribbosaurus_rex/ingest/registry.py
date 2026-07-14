@@ -31,4 +31,4 @@ def fetch_model(model_name: str, lat: float, lon: float):
         raise RuntimeError(
             f"No downloaded runs for '{key}'. "
             "Run: python -m gribbosaurus_rex fetch-once")
-    return point_timeseries(rec, lat, lon)
+    return point_timeseries(rec, lat, lon, bbox=cfg.bbox)

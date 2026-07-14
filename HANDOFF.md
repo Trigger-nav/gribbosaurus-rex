@@ -114,6 +114,40 @@ coupling (no imports either way); Stingray's ingest conventions exactly
 deployment; design headroom for blending, separate wave scores, and
 vessel-telemetry obs — don't build those yet.
 
+## Fleet mode (added 2026-07-13)
+
+Multiple race areas run in one service: `config.load_fleet()` loads every
+`enabled: true` config in `configs/` (currently balearics-summer, solent,
+fastnet-2027 — the 2027 season plan). Races must share one `data_dir`.
+Fetching uses `fetch_config(fleet)` — union bbox, union models, longest
+horizon — so each model cycle is downloaded ONCE; extraction crops to the
+race bbox (always pass `bbox=` to open_run/point_timeseries/value_at).
+Obs/verify/scores run per race (scores table has a `race` column;
+verification rows are shared and dedup by (obs, model, cycle) across
+overlapping regions — Solent obs legitimately feed both solent and
+fastnet-2027 scores). `scores.json` carries entries for every region;
+Stingray picks by bbox. API: `/races` lists areas; `race=` param on
+point/grid/scores endpoints; dashboard has a race selector in the sidebar.
+Gotcha: ICON-EU's domain check runs against the UNION bbox — a future
+race outside Europe (Caribbean 2028?) must drop `icon_eu` from ALL
+configs' shared fetch or the icon fetch pass fails (per-model, others
+unaffected). Migration: `scripts/migrate_to_si.py` also adds the
+`scores.race` column (existing rows -> balearics-summer).
+
+## GRIB export (added 2026-07-13)
+
+`export.py` + `GET /grib/{model}?race=` + dashboard download buttons:
+one multi-message GRIB2 per model's newest run, cropped to the race bbox
+via eccodes (regular_ll grids; global 0..360 axes are roll-unwrapped;
+anything unexpected passes through uncropped rather than risking a
+corrupt file). Verification design note: obs are "pinged" against the
+LOCAL area GRIBs (no per-obs network) — point-only fetching is
+impossible (GRIB packs whole fields) and undesirable (contract: raw
+files are first-class; transforms need fields). The eccodes re-encode
+path needs a live check: `python scripts/live_smoke_export.py`, then
+load an exported file into a router (Expedition) as the real acceptance
+test.
+
 ## Roadmap next steps (in rough order)
 
 1. ~~Cleanup + guard~~ Done 2026-07-13: smoke loopback writes

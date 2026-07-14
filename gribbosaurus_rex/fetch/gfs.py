@@ -27,6 +27,7 @@ THROTTLE_S = 1.5  # keep well under NOMADS rate limits
 
 class GfsFetcher(BaseFetcher):
     name = "gfs"
+    region_subset = True   # NOMADS filter crops server-side to the fetch bbox
     min_publish_lag = timedelta(hours=3, minutes=30)
 
     def steps(self, max_lead_hours: int) -> list[int]:

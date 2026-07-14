@@ -14,17 +14,28 @@ def api(path, **params):
     return r.json()
 
 
-# ---------------------------------------------------------------- model runs
-st.header("Model runs")
-
+# ------------------------------------------------------------- race selector
 try:
-    status = api("/models/status")
+    RACES = api("/races")
 except requests.RequestException as e:
     st.error(f"API not reachable at {API_URL} — start it with "
              f"`python -m gribbosaurus_rex serve`  ({e})")
     st.stop()
 
-st.caption(f"Race area: **{status['race']}** · checked {status['time']}")
+race_names = [r["name"] for r in RACES]
+race = st.sidebar.selectbox("Race area", race_names)
+race_cfg = next(r for r in RACES if r["name"] == race)
+st.sidebar.caption(race_cfg["description"])
+_b = race_cfg["bbox"]
+_focus = ((_b["lat_min"] + _b["lat_max"]) / 2,
+          (_b["lon_min"] + _b["lon_max"]) / 2)
+
+
+# ---------------------------------------------------------------- model runs
+st.header("Model runs")
+
+status = api("/models/status")
+st.caption(f"Fleet fetch domain · checked {status['time']}")
 
 cols = st.columns(max(len(status["models"]), 1))
 for col, m in zip(cols, status["models"]):
@@ -52,7 +63,7 @@ with st.expander("Run history"):
 # ---------------------------------------------------------- model confidence
 st.header("Model confidence")
 
-sc = api("/scores")
+sc = api("/scores", race=race)
 if sc["latest"]:
     src = ("earned from observations" if sc["weight_source"] == "confidence"
            else "static priors — no verification data yet")
@@ -63,7 +74,7 @@ if sc["latest"]:
                    delta=f"blend {sc['blend_weights'].get(m, 0):.0%}",
                    delta_color="off")
 
-    hist = pd.DataFrame(api("/scores/history"))
+    hist = pd.DataFrame(api("/scores/history", race=race))
     if not hist.empty:
         hist["time"] = pd.to_datetime(hist["time"])
         st.line_chart(hist.pivot_table(index="time", columns="model",
@@ -91,13 +102,13 @@ else:
 st.header("Point forecast — all models")
 
 c1, c2 = st.columns(2)
-lat = c1.number_input("Latitude", value=39.5, format="%.3f")
-lon = c2.number_input("Longitude", value=2.6, format="%.3f")
+lat = c1.number_input("Latitude", value=round(_focus[0], 3), format="%.3f")
+lon = c2.number_input("Longitude", value=round(_focus[1], 3), format="%.3f")
 
 MS_TO_KN = 1.943844  # internals are SI; knots is a display convention
 
 if st.button("Get forecast"):
-    data = api("/point", lat=lat, lon=lon)
+    data = api("/point", lat=lat, lon=lon, race=race)
     df = pd.DataFrame(data)
     df["time"] = pd.to_datetime(df["time"])
     df["wind_speed_kn"] = df["wind_speed_ms"] * MS_TO_KN
@@ -114,11 +125,32 @@ if st.button("Get forecast"):
     with st.expander("Raw data"):
         st.dataframe(df, use_container_width=True)
 
+# ------------------------------------------------------------ GRIB downloads
+st.header("GRIB downloads")
+st.caption("Latest run of each model, cropped to this race area — "
+           "load straight into Expedition/Adrena/qtVlm.")
+
+dl_cols = st.columns(max(len(race_cfg["models"]), 1))
+for col, mdl in zip(dl_cols, race_cfg["models"]):
+    with col:
+        if st.button(f"Prepare {mdl.upper()}", key=f"prep_{mdl}"):
+            r = requests.get(f"{API_URL}/grib/{mdl}",
+                             params={"race": race}, timeout=300)
+            if r.status_code != 200:
+                st.error(r.json().get("detail", r.text))
+            else:
+                fname = r.headers.get("content-disposition", "").split(
+                    'filename="')[-1].rstrip('"') or f"{mdl}.grib2"
+                st.download_button(
+                    label=f"⬇ {fname} ({len(r.content) / 1e6:.1f} MB)",
+                    data=r.content, file_name=fname,
+                    mime="application/octet-stream", key=f"dl_{mdl}")
+
 # ------------------------------------------------------------- blended grid
 st.header("Blended grid")
 
 if st.button("Run blended field"):
-    data = api("/grid")
+    data = api("/grid", race=race)
     df = pd.DataFrame(data)
     df["speed_kn"] = df["speed_ms"] * MS_TO_KN
     df["uncertainty_kn"] = df["uncertainty_ms"] * MS_TO_KN

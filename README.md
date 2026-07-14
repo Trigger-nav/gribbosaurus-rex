@@ -34,9 +34,14 @@ pip install -r requirements.txt
 
 ## Usage
 
-Everything is driven by a race config (`configs/*.yaml`) — bbox, models,
-horizon. Default is `configs/balearics.yaml`; select with `--config` or
-`GRIBBO_CONFIG`.
+Everything is driven by race configs (`configs/*.yaml`) — bbox, models,
+horizon, `enabled` flag. **Fleet mode is the default**: every enabled
+config runs together — currently `balearics-summer`, `solent`, and
+`fastnet-2027`. One fetch pass covers the union bbox (models whose files
+are region-independent are downloaded once and cropped per race), scoring
+runs per race, and one `scores.json` carries entries for every region.
+Pin a single race with `--config path.yaml` or `GRIBBO_CONFIG`. Adding a
+race = adding a YAML file; disabling one = `enabled: false`.
 
 ```bash
 python -m gribbosaurus_rex fetch-once      # grab newest published runs

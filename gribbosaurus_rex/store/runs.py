@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS runs (
     bytes       INTEGER DEFAULT 0,
     path        TEXT,
     message     TEXT,
+    bbox        TEXT,                   -- fetch domain "latmin,latmax,lonmin,lonmax"
     UNIQUE (model, cycle)
 );
 CREATE INDEX IF NOT EXISTS idx_runs_model_cycle ON runs (model, cycle DESC);
@@ -49,10 +50,25 @@ class RunRecord:
     bytes: int
     path: str | None
     message: str | None
+    bbox: str | None = None
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> "RunRecord":
         return cls(**{k: row[k] for k in row.keys()})
+
+    def bbox_covers(self, lat_min: float, lat_max: float,
+                    lon_min: float, lon_max: float) -> bool:
+        """True if this run's stored fetch domain covers the box. Runs
+        recorded before bbox tracking (NULL) count as NOT covering, so
+        bbox-subset models refetch once and then carry the tag."""
+        if not self.bbox:
+            return False
+        try:
+            b = [float(x) for x in self.bbox.split(",")]
+        except ValueError:
+            return False
+        return (b[0] <= lat_min and b[1] >= lat_max
+                and b[2] <= lon_min and b[3] >= lon_max)
 
 
 class RunStore:
@@ -62,19 +78,25 @@ class RunStore:
         self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(SCHEMA)
+        # in-place upgrade for pre-fleet databases (idempotent)
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(runs)")}
+        if "bbox" not in cols:
+            self._conn.execute("ALTER TABLE runs ADD COLUMN bbox TEXT")
         self._conn.commit()
 
     # -- lifecycle of a fetch -------------------------------------------------
 
-    def start(self, model: str, cycle: str, path: str) -> None:
+    def start(self, model: str, cycle: str, path: str,
+              bbox: str | None = None) -> None:
         """Register a fetch attempt (idempotent: re-attempts reset the row)."""
         self._conn.execute(
-            """INSERT INTO runs (model, cycle, status, started_at, path)
-               VALUES (?, ?, 'fetching', ?, ?)
+            """INSERT INTO runs (model, cycle, status, started_at, path, bbox)
+               VALUES (?, ?, 'fetching', ?, ?, ?)
                ON CONFLICT (model, cycle) DO UPDATE SET
                  status='fetching', started_at=excluded.started_at,
-                 finished_at=NULL, message=NULL, path=excluded.path""",
-            (model, cycle, _now(), path),
+                 finished_at=NULL, message=NULL, path=excluded.path,
+                 bbox=excluded.bbox""",
+            (model, cycle, _now(), path, bbox),
         )
         self._conn.commit()
 

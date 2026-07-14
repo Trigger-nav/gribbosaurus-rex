@@ -66,6 +66,15 @@ def main() -> int:
             "WHERE fc_wind_speed IS NOT NULL", (KN_TO_MS,))
         changed.append("verification.fc_wind_speed (converted)")
 
+    # fleet support: scores table gains a race column (idempotent)
+    if not has_col(conn, "scores", "race"):
+        conn.execute(
+            "ALTER TABLE scores ADD COLUMN race TEXT NOT NULL DEFAULT ''")
+        # pre-fleet scores belonged to the balearics config
+        conn.execute("UPDATE scores SET race='balearics-summer' WHERE race=''")
+        changed.append("scores.race column added (existing rows -> "
+                       "balearics-summer)")
+
     # smoke-test pollution cleanup (idempotent)
     n_v = conn.execute(
         """DELETE FROM verification WHERE obs_id IN

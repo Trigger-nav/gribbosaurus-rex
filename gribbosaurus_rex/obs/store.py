@@ -55,15 +55,16 @@ CREATE INDEX IF NOT EXISTS idx_verif_model ON verification (model, created_at DE
 CREATE TABLE IF NOT EXISTS scores (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     time          TEXT NOT NULL,          -- when the score was computed
+    race          TEXT NOT NULL DEFAULT '',  -- fleet: which race area
     model         TEXT NOT NULL,
     score         REAL NOT NULL,          -- 0..1 confidence
     n_obs         INTEGER NOT NULL,
     rmse_vector_ms REAL,
     mean_dir_err  REAL,
     mean_press_bias REAL,
-    UNIQUE (time, model)
+    UNIQUE (time, race, model)
 );
-CREATE INDEX IF NOT EXISTS idx_scores_model_time ON scores (model, time DESC);
+CREATE INDEX IF NOT EXISTS idx_scores_model_time ON scores (race, model, time DESC);
 """
 
 
@@ -190,32 +191,37 @@ class ObsStore:
     def insert_score(self, *, time_iso: str, model: str, score: float,
                      n_obs: int, rmse_vector_ms: float | None,
                      mean_dir_err: float | None,
-                     mean_press_bias: float | None) -> None:
+                     mean_press_bias: float | None, race: str = "") -> None:
         self._conn.execute(
             """INSERT OR REPLACE INTO scores
-               (time, model, score, n_obs, rmse_vector_ms, mean_dir_err,
+               (time, race, model, score, n_obs, rmse_vector_ms, mean_dir_err,
                 mean_press_bias)
-               VALUES (?,?,?,?,?,?,?)""",
-            (time_iso, model, score, n_obs, rmse_vector_ms, mean_dir_err,
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (time_iso, race, model, score, n_obs, rmse_vector_ms, mean_dir_err,
              mean_press_bias),
         )
         self._conn.commit()
 
-    def latest_scores(self) -> dict[str, float]:
+    def latest_scores(self, race: str = "") -> dict[str, float]:
         rows = self._conn.execute(
             """SELECT model, score FROM scores s
-               WHERE time = (SELECT MAX(time) FROM scores WHERE model = s.model)
-            """).fetchall()
+               WHERE race = ? AND time = (SELECT MAX(time) FROM scores
+                                          WHERE model = s.model AND race = ?)
+            """, (race, race)).fetchall()
         return {r["model"]: r["score"] for r in rows}
 
-    def score_history(self, model: str | None = None,
-                      limit: int = 500) -> list[sqlite3.Row]:
+    def score_history(self, model: str | None = None, limit: int = 500,
+                      race: str | None = None) -> list[sqlite3.Row]:
+        conds, params = [], []
         if model:
-            return self._conn.execute(
-                "SELECT * FROM scores WHERE model=? ORDER BY time DESC LIMIT ?",
-                (model, limit)).fetchall()
+            conds.append("model=?"); params.append(model)
+        if race is not None:
+            conds.append("race=?"); params.append(race)
+        where = ("WHERE " + " AND ".join(conds)) if conds else ""
+        params.append(limit)
         return self._conn.execute(
-            "SELECT * FROM scores ORDER BY time DESC LIMIT ?", (limit,)).fetchall()
+            f"SELECT * FROM scores {where} ORDER BY time DESC LIMIT ?",
+            params).fetchall()
 
     def close(self) -> None:
         self._conn.close()

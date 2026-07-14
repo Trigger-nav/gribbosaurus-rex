@@ -6,7 +6,9 @@
   python -m gribbosaurus_rex point 39.5 2.6         # forecasts at lat lon
   python -m gribbosaurus_rex serve                  # API + poller (uvicorn)
 
-All commands accept --config path/to/race.yaml (or set GRIBBO_CONFIG).
+Fleet mode (default): every enabled config in configs/ runs together —
+one fetch pass over the union bbox, per-race scoring, one scores.json.
+Pass --config path/to/race.yaml (or set GRIBBO_CONFIG) to pin a single race.
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ import logging
 import os
 import sys
 
-from gribbosaurus_rex.config import load_config
+from gribbosaurus_rex.config import fetch_config, load_config, load_fleet
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -45,7 +47,11 @@ def main(argv: list[str] | None = None) -> int:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
-    cfg = load_config(args.config)
+    if args.config:
+        fleet = [load_config(args.config)]
+    else:
+        fleet = load_fleet()
+    cfg = fetch_config(fleet)  # union bbox/models — drives fetch + stores
 
     if args.cmd == "status":
         from gribbosaurus_rex.store.runs import RunStore
@@ -74,13 +80,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "watch":
         from gribbosaurus_rex.scheduler import watch
 
-        watch(cfg)
+        watch(fleet)
         return 0
 
     if args.cmd == "point":
         from gribbosaurus_rex.extract import MS_TO_KN, latest_point_forecasts
 
-        df = latest_point_forecasts(cfg, args.lat, args.lon)
+        rc = next((r for r in fleet
+                   if r.bbox.padded(1.0).contains(args.lat, args.lon)), None)
+        if rc is None:
+            print(f"({args.lat},{args.lon}) is outside every enabled race area")
+            return 1
+        print(f"[race: {rc.name}]")
+        df = latest_point_forecasts(rc, args.lat, args.lon)
         if df.empty:
             print("No model runs on disk yet — run fetch-once first.")
             return 1
@@ -113,23 +125,29 @@ def main(argv: list[str] | None = None) -> int:
         from gribbosaurus_rex.scheduler import obs_and_verify_pass
         from gribbosaurus_rex.store.runs import RunStore
 
-        result = obs_and_verify_pass(cfg, RunStore(cfg.db_path))
+        result = obs_and_verify_pass(fleet, RunStore(cfg.db_path))
         print(f"new obs:           {result['new_obs']}")
         print(f"new verifications: {result['new_verifications']}")
-        for m, s in sorted(result["scores"].items()):
-            print(f"  confidence {m:8s} {s:.3f}")
+        for race, sc in sorted(result["scores"].items()):
+            for m, s in sorted(sc.items()):
+                print(f"  confidence [{race}] {m:8s} {s:.3f}")
         return 0
 
     if args.cmd == "scores":
         from gribbosaurus_rex.obs.store import ObsStore
 
         store = ObsStore(cfg.db_path)
-        latest = store.latest_scores()
-        if not latest:
+        any_scores = False
+        for rc in fleet:
+            latest = store.latest_scores(race=rc.name)
+            if not latest:
+                continue
+            any_scores = True
+            print(f"[{rc.name}]")
+            for m, s in sorted(latest.items()):
+                print(f"  {m:8s} {s:.3f}")
+        if not any_scores:
             print("No scores yet — run verify-once after some obs exist.")
-            return 0
-        for m, s in sorted(latest.items()):
-            print(f"  {m:8s} {s:.3f}")
         return 0
 
     if args.cmd == "arbiter-once":
@@ -140,7 +158,7 @@ def main(argv: list[str] | None = None) -> int:
 
         run_store = RunStore(cfg.db_path)
         fetched = check_all(cfg, run_store)
-        result = obs_and_verify_pass(cfg, run_store)
+        result = obs_and_verify_pass(fleet, run_store)
         new_runs = {m: c for m, c in fetched.items() if c}
         print(f"runs fetched:      {new_runs or 'none new'}")
         print(f"new obs:           {result['new_obs']}")

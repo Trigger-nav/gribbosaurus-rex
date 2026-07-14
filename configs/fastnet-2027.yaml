@@ -1,0 +1,49 @@
+# Rolex Fastnet Race 2027 — Cowes, Solent start, Land's End, Celtic Sea,
+# Fastnet Rock, back past the Scillies to the Cherbourg finish. Wide box
+# covering the whole course plus sea room; longer horizon for offshore
+# routing decisions.
+
+name: fastnet-2027
+description: Fastnet course — Solent to Fastnet Rock to Cherbourg
+enabled: true
+
+bbox:
+  lat_min: 48.8
+  lat_max: 52.2
+  lon_min: -10.8
+  lon_max: -1.0
+
+models:
+  - ifs
+  - aifs
+  - gfs
+  - icon_eu
+
+max_lead_hours: 144      # offshore: want the long game (IFS oper reaches it)
+keep_runs: 8
+data_dir: data           # shared fleet store
+poll_minutes: 10
+
+observations:
+  metar: true             # EGHE Scilly, EICK Cork, EIWF Waterford, Channel...
+  ndbc_stations: []       # UK/Irish wave buoys join with wave scoring
+  openmeteo: false
+  focus: {lat: 50.0, lon: -6.0}     # mid-course, Celtic Sea approaches
+  nmea:
+    enabled: false
+    transport: udp
+    port: 10110
+
+trust:
+  yacht: 1.0
+  metar: 0.85
+  ndbc: 0.9
+  openmeteo: 0.4
+
+scoring:
+  window_h: 48
+  half_weight_nm: 60      # offshore: distant obs still tell you plenty
+  lead_half_h: 36
+  recency_half_h: 12
+  err_scale_ms: 2.5
+  publish_window_h: 24

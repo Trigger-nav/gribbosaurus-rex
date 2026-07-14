@@ -53,23 +53,22 @@ def _half_life(x: float, half: float) -> float:
     return 0.5 ** (max(0.0, x) / half) if half > 0 else 1.0
 
 
-def build_scores(cfg: RaceConfig, obs_store: ObsStore,
-                 now: datetime | None = None) -> dict:
-    """Build the scores.json document (schema 1.0) from verifications."""
-    now = now or datetime.now(timezone.utc)
-    window_h = cfg.scoring.publish_window_h
-    rows = obs_store.verifications_window(window_h)
-
+def _region_entries(cfg: RaceConfig, rows, now: datetime) -> list[dict]:
+    """Score entries for one race's region. Verification rows are filtered
+    to observations inside this race's bbox — fleet mode shares one
+    verification table across regions."""
     region = {
         "lon_min": cfg.bbox.lon_min, "lat_min": cfg.bbox.lat_min,
         "lon_max": cfg.bbox.lon_max, "lat_max": cfg.bbox.lat_max,
     }
+    in_region = [r for r in rows
+                 if cfg.bbox.padded(0.5).contains(r["lat"], r["lon"])]
 
     entries = []
     for model in cfg.models:
         for lo, hi in LEAD_BUCKETS:
             samples = [
-                r for r in rows
+                r for r in in_region
                 if r["model"] == model
                 and r["source"] not in EXCLUDED_SOURCES
                 and r["err_vector_ms"] is not None
@@ -105,8 +104,24 @@ def build_scores(cfg: RaceConfig, obs_store: ObsStore,
                 "score": round(score, 4),
                 "metrics": metrics,
                 "obs_count": len({r["obs_id"] for r in samples}),
-                "obs_window_h": window_h,
+                "obs_window_h": cfg.scoring.publish_window_h,
             })
+    return entries
+
+
+def build_scores(races: RaceConfig | list[RaceConfig], obs_store: ObsStore,
+                 now: datetime | None = None) -> dict:
+    """Build the scores.json document (schema 1.0) — one entry per
+    (model, region, lead bucket) across every race in the fleet."""
+    if isinstance(races, RaceConfig):
+        races = [races]
+    now = now or datetime.now(timezone.utc)
+    window_h = max(r.scoring.publish_window_h for r in races)
+    rows = obs_store.verifications_window(window_h)
+
+    entries = []
+    for cfg in races:
+        entries.extend(_region_entries(cfg, rows, now))
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -136,7 +151,10 @@ def etag_for(content: bytes) -> str:
     return '"' + hashlib.md5(content).hexdigest() + '"'
 
 
-def publish(cfg: RaceConfig, obs_store: ObsStore | None = None) -> Path:
+def publish(races: RaceConfig | list[RaceConfig],
+            obs_store: ObsStore | None = None) -> Path:
     """Build + write in one call (the arbiter's last step)."""
-    store = obs_store or ObsStore(cfg.db_path)
-    return write_scores(cfg, build_scores(cfg, store))
+    if isinstance(races, RaceConfig):
+        races = [races]
+    store = obs_store or ObsStore(races[0].db_path)
+    return write_scores(races[0], build_scores(races, store))

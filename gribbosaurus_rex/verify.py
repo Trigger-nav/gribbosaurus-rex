@@ -82,7 +82,8 @@ def verify_pass(cfg: RaceConfig, run_store: RunStore, obs_store: ObsStore) -> in
                     continue
                 try:
                     fc = value_at(rec, ob.lat, ob.lon,
-                                  pd.Timestamp(t_obs).tz_convert("UTC"))
+                                  pd.Timestamp(t_obs).tz_convert("UTC"),
+                                  bbox=cfg.bbox)
                 except Exception:  # noqa: BLE001
                     log.exception("value_at failed: %s %s", model, rec.cycle)
                     continue
@@ -162,7 +163,7 @@ def compute_scores(cfg: RaceConfig, obs_store: ObsStore,
                       if not np.all(np.isnan(ep)) else None)
         scores[model] = score
         obs_store.insert_score(
-            time_iso=t_iso, model=model, score=round(score, 4),
+            time_iso=t_iso, model=model, race=cfg.name, score=round(score, 4),
             n_obs=len(samples), rmse_vector_ms=round(rmse, 3),
             mean_dir_err=round(float(np.sum(w * ed) / w.sum()), 1),
             mean_press_bias=(round(press_bias, 2)
@@ -177,12 +178,13 @@ def compute_scores(cfg: RaceConfig, obs_store: ObsStore,
 
 def blend_weights(cfg: RaceConfig, obs_store: ObsStore,
                   floor: float = 0.05) -> dict[str, float] | None:
-    """Normalized blend weights from the latest scores (None if no scores).
+    """Normalized blend weights from this race's latest scores (None if
+    no scores yet).
 
     A small floor keeps every model in the blend — a model at score 0
     still carries signal, and scores recover as its forecasts improve.
     """
-    latest = obs_store.latest_scores()
+    latest = obs_store.latest_scores(race=cfg.name)
     usable = {m: max(latest[m], floor) for m in cfg.models if m in latest}
     if not usable:
         return None

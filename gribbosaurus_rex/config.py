@@ -1,9 +1,15 @@
 """Race/venue configuration.
 
-A RaceConfig describes *where* and *what* to fetch: bounding box, models,
-forecast horizon. One YAML file per race/venue lives in configs/.
+A RaceConfig describes *where* and *what* to score: bounding box, models,
+forecast horizon. One YAML file per race/venue lives in configs/, with
+`enabled: true/false` controlling whether the fleet runs it.
 
-Resolution order for the active config:
+Fleet mode (the normal way to run): `load_fleet()` loads every enabled
+config in configs/. All races share one data_dir (one run store, one obs
+store, one GRIB cache); fetching uses the UNION of their bboxes so each
+model run is downloaded once, and extraction crops per race.
+
+Single-race resolution (CLI --config, tests):
   1. explicit path argument
   2. $GRIBBO_CONFIG environment variable
   3. configs/balearics.yaml (repo default)
@@ -86,6 +92,7 @@ class RaceConfig:
     data_dir: Path = REPO_ROOT / "data"
     poll_minutes: int = 10
     description: str = ""
+    enabled: bool = True
     obs: ObsConfig = ObsConfig()
     scoring: ScoringConfig = ScoringConfig()
     trust: tuple[tuple[str, float], ...] = tuple(DEFAULT_TRUST.items())
@@ -166,7 +173,72 @@ def load_config(path: str | os.PathLike | None = None) -> RaceConfig:
         data_dir=data_dir,
         poll_minutes=int(raw.get("poll_minutes", 10)),
         description=raw.get("description", ""),
+        enabled=bool(raw.get("enabled", True)),
         obs=obs,
         scoring=scoring,
         trust=tuple(sorted(trust.items())),
+    )
+
+
+# --------------------------------------------------------------------- fleet
+
+def load_fleet(config_dir: str | os.PathLike | None = None) -> list[RaceConfig]:
+    """All enabled race configs, sorted by name.
+
+    If $GRIBBO_CONFIG points at a single file, the fleet is just that
+    race (keeps --config workflows and tests working unchanged).
+    """
+    if os.environ.get("GRIBBO_CONFIG"):
+        return [load_config()]
+    cdir = Path(config_dir or os.environ.get("GRIBBO_CONFIG_DIR")
+                or REPO_ROOT / "configs")
+    races = []
+    for path in sorted(cdir.glob("*.yaml")):
+        try:
+            cfg = load_config(path)
+        except (KeyError, ValueError) as e:
+            raise ValueError(f"Bad race config {path}: {e}") from e
+        if cfg.enabled:
+            races.append(cfg)
+    if not races:
+        raise FileNotFoundError(f"No enabled race configs in {cdir}")
+    names = [r.name for r in races]
+    if len(set(names)) != len(names):
+        raise ValueError(f"Duplicate race names in fleet: {names}")
+    dirs = {r.data_dir for r in races}
+    if len(dirs) > 1:
+        raise ValueError(
+            f"Fleet races must share one data_dir, got: {sorted(map(str, dirs))}")
+    return races
+
+
+def union_bbox(races: list[RaceConfig]) -> BBox:
+    """Smallest bbox covering every race — the fetch domain for models
+    whose downloads are bbox-subset server-side (GFS)."""
+    return BBox(
+        min(r.bbox.lat_min for r in races),
+        max(r.bbox.lat_max for r in races),
+        min(r.bbox.lon_min for r in races),
+        max(r.bbox.lon_max for r in races),
+    )
+
+
+def fetch_config(races: list[RaceConfig]) -> RaceConfig:
+    """Synthetic config driving the shared fetch pass: union bbox, union
+    of models, the longest horizon any race wants."""
+    from dataclasses import replace
+
+    models: list[str] = []
+    for r in races:
+        for m in r.models:
+            if m not in models:
+                models.append(m)
+    return replace(
+        races[0],
+        name="fleet",
+        bbox=union_bbox(races),
+        models=tuple(models),
+        max_lead_hours=max(r.max_lead_hours for r in races),
+        keep_runs=max(r.keep_runs for r in races),
+        poll_minutes=min(r.poll_minutes for r in races),
     )
