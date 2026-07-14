@@ -1,0 +1,49 @@
+# Rolex Middle Sea Race — Malta, Strait of Messina, north of Sicily,
+# Egadi Islands, Pantelleria, Lampedusa, back to Malta.
+
+name: middle-sea-race
+description: Middle Sea Race — Malta round Sicily
+enabled: true
+
+bbox:
+  lat_min: 35.0
+  lat_max: 38.8
+  lon_min: 11.0
+  lon_max: 16.5
+
+models:
+  - ifs
+  - aifs
+  - gfs
+  - icon_eu        # ICON-EU domain reaches the central Med
+
+max_lead_hours: 120
+keep_runs: 8
+data_dir: data
+poll_minutes: 10
+
+observations:
+  metar: true      # LMML Malta, Sicily airports (Catania, Palermo, Trapani)
+  windycator: false
+  ndbc_stations: []
+  openmeteo: false
+  focus: {lat: 35.90, lon: 14.51}   # Grand Harbour, Malta
+  nmea:
+    enabled: false
+    transport: udp
+    port: 10110
+
+trust:
+  yacht: 1.0
+  metar: 0.85
+  ndbc: 0.9
+  windycator: 0.8
+  openmeteo: 0.4
+
+scoring:
+  window_h: 48
+  half_weight_nm: 50
+  lead_half_h: 30
+  recency_half_h: 12
+  err_scale_ms: 2.5
+  publish_window_h: 24

@@ -34,6 +34,7 @@ PARAMS = ("10u", "10v", "msl")
 class EcmwfOpenFetcher(BaseFetcher):
     name = "ifs"
     product = "ifs"
+    resolution = "0.25° · global · physics"
     min_publish_lag = timedelta(hours=6, minutes=30)
 
     def stream(self, cycle: datetime) -> str:
@@ -126,6 +127,7 @@ class EcmwfOpenFetcher(BaseFetcher):
 class AifsFetcher(EcmwfOpenFetcher):
     name = "aifs"
     product = "aifs-single"
+    resolution = "0.25° · global · ML"
     min_publish_lag = timedelta(hours=7)
 
     def stream(self, cycle: datetime) -> str:

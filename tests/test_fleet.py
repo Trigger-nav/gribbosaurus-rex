@@ -30,23 +30,32 @@ def _iso(dt):
 def test_repo_fleet_loads():
     fleet = load_fleet(REPO / "configs")
     names = {r.name for r in fleet}
-    assert {"balearics-summer", "solent", "fastnet-2027"} <= names
-    solent = next(r for r in fleet if r.name == "solent")
-    assert solent.bbox.contains(50.76, -1.30)          # Cowes
-    fastnet = next(r for r in fleet if r.name == "fastnet-2027")
+    assert names == {"central-med", "english-channel", "fastnet",
+                     "middle-sea-race", "caribbean-600"}
+    channel = next(r for r in fleet if r.name == "english-channel")
+    assert channel.bbox.contains(50.76, -1.30)          # Cowes
+    assert channel.bbox.contains(49.65, -1.62)          # Cherbourg
+    fastnet = next(r for r in fleet if r.name == "fastnet")
     assert fastnet.bbox.contains(51.39, -9.60)          # Fastnet Rock
-    assert fastnet.bbox.contains(49.65, -1.62)          # Cherbourg
     assert fastnet.max_lead_hours == 144
-    # all races share one data_dir (enforced)
+    msr = next(r for r in fleet if r.name == "middle-sea-race")
+    assert msr.bbox.contains(35.90, 14.51)              # Malta
+    assert msr.bbox.contains(38.25, 15.60)              # Strait of Messina
+    carib = next(r for r in fleet if r.name == "caribbean-600")
+    assert carib.bbox.contains(17.06, -61.79)           # Antigua
+    assert carib.bbox.contains(18.05, -63.05)           # St Maarten
+    assert "icon_eu" not in carib.models                # outside ICON-EU
+    # retired configs stay disabled, all races share one data_dir
+    assert not any("retired" in n for n in names)
     assert len({r.data_dir for r in fleet}) == 1
 
 
 def test_union_bbox_and_fetch_config():
     fleet = load_fleet(REPO / "configs")
     u = union_bbox(fleet)
-    # spans Med to Celtic Sea
-    assert u.lat_min <= 38.0 and u.lat_max >= 52.2
-    assert u.lon_min <= -10.8 and u.lon_max >= 3.5
+    # spans the Caribbean to the central Med to the Celtic Sea
+    assert u.lat_min <= 15.5 and u.lat_max >= 52.2
+    assert u.lon_min <= -63.8 and u.lon_max >= 16.5
 
     fc = fetch_config(fleet)
     assert fc.name == "fleet"

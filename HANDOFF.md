@@ -161,6 +161,21 @@ Courtesy note: it's Ian Millard's personal service — polling is one
 bbox request per enabled race per poll cycle with an identifying UA;
 consider dropping him a note if this becomes load-bearing for racing.
 
+## Fleet roster (renamed/expanded 2026-07-14)
+
+Races: central-med (ex balearics-summer), english-channel (ex solent,
+bbox widened to the Channel racing area), fastnet (ex fastnet-2027),
+middle-sea-race (Malta/Sicily), caribbean-600 (Antigua/Leewards —
+**icon_eu excluded**: outside the ICON-EU domain). The old three config
+files are disabled tombstones — `git rm configs/balearics.yaml
+configs/solent.yaml configs/fastnet-2027.yaml` whenever convenient.
+ICON's fetch domain check now only fails on ZERO overlap with Europe
+(the fleet union bbox legitimately spans the Caribbean). Score history
+under the old race names remains in the scores table untouched.
+Consequence of the Caribbean joining the fleet: the GFS fetch domain is
+now trans-Atlantic (still small — bbox-subset) and existing GFS runs
+auto-refetch once via the bbox-coverage rule.
+
 ## Roadmap next steps (in rough order)
 
 1. ~~Cleanup + guard~~ Done 2026-07-13: smoke loopback writes

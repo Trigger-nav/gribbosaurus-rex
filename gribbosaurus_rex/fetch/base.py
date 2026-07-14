@@ -60,6 +60,10 @@ class FetchResult:
 class BaseFetcher(abc.ABC):
     #: registry key, e.g. "ifs"
     name: str = "?"
+    #: human-readable grid resolution, shown in the UI
+    resolution: str = "?"
+    #: coverage {"lat_min","lat_max","lon_min","lon_max"} or None = global
+    domain: dict | None = None
     #: True when downloads are bbox-subset server-side (files on disk only
     #: cover the fetch domain) — such runs refetch when the domain grows
     region_subset: bool = False
@@ -93,6 +97,28 @@ class BaseFetcher(abc.ABC):
     def steps(self, max_lead_hours: int) -> list[int]:
         """Forecast lead times (hours) to download. Override per model."""
         return [s for s in range(0, max_lead_hours + 1, 3)]
+
+    def next_expected(self, now: datetime | None = None
+                      ) -> tuple[datetime, datetime]:
+        """(next_cycle, when_we_expect_it_published) — for the UI.
+
+        The next cycle is the first one after the newest possibly-published
+        cycle; availability estimate = cycle time + typical publish lag.
+        """
+        now = now or datetime.now(timezone.utc)
+        cands = self.candidate_cycles(now)
+        newest = cands[0] if cands else now
+        day = newest.date()
+        for d in range(3):
+            base = datetime.combine(day, datetime.min.time(),
+                                    tzinfo=timezone.utc) + timedelta(days=d)
+            for h in sorted(self.cycle_hours):
+                c = base + timedelta(hours=h)
+                if c > newest:
+                    return c, c + self.min_publish_lag
+        # unreachable with sane cycle_hours; satisfy the type checker
+        c = newest + timedelta(hours=6)
+        return c, c + self.min_publish_lag
 
     # -- to implement per model ----------------------------------------------
 

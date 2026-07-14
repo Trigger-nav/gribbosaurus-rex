@@ -1,0 +1,50 @@
+# English Channel — Solent-centred, widened to the RORC Channel racing
+# area (formerly solent). Covers Cowes, the central/eastern Channel,
+# Cherbourg peninsula and the Channel Islands' northern approaches.
+
+name: english-channel
+description: English Channel — Solent, south coast and Channel crossings
+enabled: true
+
+bbox:
+  lat_min: 49.3
+  lat_max: 51.2
+  lon_min: -3.5
+  lon_max: 1.5
+
+models:
+  - ifs
+  - aifs
+  - gfs
+  - icon_eu
+
+max_lead_hours: 72
+keep_runs: 8
+data_dir: data
+poll_minutes: 10
+
+observations:
+  metar: true
+  windycator: true         # Bramble Post, Calshot, Hurst, piers, clubs...
+  ndbc_stations: []
+  openmeteo: false
+  focus: {lat: 50.76, lon: -1.30}   # Cowes
+  nmea:
+    enabled: false
+    transport: udp
+    port: 10110
+
+trust:
+  yacht: 1.0
+  metar: 0.85
+  ndbc: 0.9
+  windycator: 0.8
+  openmeteo: 0.4
+
+scoring:
+  window_h: 48
+  half_weight_nm: 30
+  lead_half_h: 24
+  recency_half_h: 12
+  err_scale_ms: 2.5
+  publish_window_h: 24

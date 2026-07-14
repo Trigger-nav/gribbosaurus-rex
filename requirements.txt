@@ -14,6 +14,7 @@ scipy            # xarray linear interpolation
 fastapi
 uvicorn
 streamlit
+pydeck
 
 # kept for Phase 2 obs cross-checks (Open-Meteo served data)
 requests-cache

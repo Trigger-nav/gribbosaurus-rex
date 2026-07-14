@@ -1,0 +1,51 @@
+# RORC Caribbean 600 — Antigua start/finish, round 11 islands: Barbuda,
+# Nevis, Saba, St Barths, St Maarten, Guadeloupe, Les Saintes, Redonda...
+#
+# NOTE: icon_eu is deliberately absent — the Caribbean is outside the
+# ICON-EU domain. Global models only.
+
+name: caribbean-600
+description: Caribbean 600 — Antigua and the Leeward Islands
+enabled: true
+
+bbox:
+  lat_min: 15.5
+  lat_max: 18.8
+  lon_min: -63.8
+  lon_max: -60.8
+
+models:
+  - ifs
+  - aifs
+  - gfs
+
+max_lead_hours: 96
+keep_runs: 8
+data_dir: data
+poll_minutes: 10
+
+observations:
+  metar: true      # TAPA Antigua, TFFR Guadeloupe, TNCM St Maarten...
+  windycator: false
+  ndbc_stations: []   # candidates: NDBC Caribbean buoys, add when needed
+  openmeteo: false
+  focus: {lat: 17.06, lon: -61.79}   # English Harbour, Antigua
+  nmea:
+    enabled: false
+    transport: udp
+    port: 10110
+
+trust:
+  yacht: 1.0
+  metar: 0.85
+  ndbc: 0.9
+  windycator: 0.8
+  openmeteo: 0.4
+
+scoring:
+  window_h: 48
+  half_weight_nm: 50
+  lead_half_h: 30
+  recency_half_h: 12
+  err_scale_ms: 2.5
+  publish_window_h: 24

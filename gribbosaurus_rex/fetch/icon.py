@@ -32,6 +32,8 @@ DOMAIN = dict(lat_min=29.5, lat_max=70.5, lon_min=-23.5, lon_max=62.5)
 
 class IconEuFetcher(BaseFetcher):
     name = "icon_eu"
+    resolution = "0.0625° · Europe · hourly steps"
+    domain = DOMAIN
     min_publish_lag = timedelta(hours=2, minutes=30)
 
     def steps(self, max_lead_hours: int) -> list[int]:
@@ -49,12 +51,22 @@ class IconEuFetcher(BaseFetcher):
         return self.head_ok(self._url(cycle, last, "u_10m", "U_10M"))
 
     def _check_domain(self, cfg: RaceConfig) -> None:
+        """Fail only when the fetch bbox has NO overlap with ICON-EU.
+
+        Downloads are full-domain files regardless of bbox, so partial
+        overlap is fine — in fleet mode the fetch bbox is the union of
+        all races (which may include e.g. the Caribbean); races outside
+        the domain simply exclude icon_eu from their own model list.
+        """
         b = cfg.bbox
-        if not (DOMAIN["lat_min"] <= b.lat_min and b.lat_max <= DOMAIN["lat_max"]
-                and DOMAIN["lon_min"] <= b.lon_min and b.lon_max <= DOMAIN["lon_max"]):
+        no_overlap = (b.lat_max < DOMAIN["lat_min"]
+                      or b.lat_min > DOMAIN["lat_max"]
+                      or b.lon_max < DOMAIN["lon_min"]
+                      or b.lon_min > DOMAIN["lon_max"])
+        if no_overlap:
             raise RuntimeError(
-                f"Race bbox {b} is outside the ICON-EU domain; "
-                "remove icon_eu from the config for this venue.")
+                f"Fetch bbox {b} has no overlap with the ICON-EU domain; "
+                "remove icon_eu from the configs requesting it.")
 
     def fetch(self, cycle: datetime, cfg: RaceConfig, dest: Path) -> FetchResult:
         self._check_domain(cfg)

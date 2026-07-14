@@ -104,6 +104,7 @@ def models_status():
         if latest:
             age_h = round((now - datetime.fromisoformat(latest.cycle))
                           .total_seconds() / 3600, 1)
+        next_cycle, next_expected = fetcher.next_expected(now)
         out.append({
             "model": model,
             "latest_cycle": latest.cycle if latest else None,
@@ -113,6 +114,10 @@ def models_status():
             "size_mb": round(latest.bytes / 1e6, 1) if latest else 0,
             "newest_possible_cycle": newest_candidate,
             "up_to_date": bool(latest and latest.cycle == newest_candidate),
+            "resolution": fetcher.resolution,
+            "domain": fetcher.domain,   # None = global coverage
+            "next_cycle": cycle_db(next_cycle),
+            "next_expected_at": next_expected.isoformat(timespec="seconds"),
         })
     return {"race": fleet_cfg.name,
             "races": [r.name for r in RACES],

@@ -39,7 +39,7 @@ def nmea(body: str) -> str:
 # ------------------------------------------------------------------- config
 
 def test_phase2_config_loads():
-    cfg = load_config(REPO / "configs" / "balearics.yaml")
+    cfg = load_config(REPO / "configs" / "central-med.yaml")
     assert cfg.obs.metar is True
     assert cfg.obs.nmea.port == 10110
     assert cfg.trust_for("yacht") == 1.0

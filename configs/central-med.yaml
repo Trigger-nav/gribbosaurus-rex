@@ -1,0 +1,48 @@
+# Central Med — Palma Bay / Balearics (formerly balearics-summer).
+
+name: central-med
+description: Central Med — Palma Bay and the Balearics
+enabled: true
+
+bbox:
+  lat_min: 38.0
+  lat_max: 40.5
+  lon_min: 0.5
+  lon_max: 3.5
+
+models:
+  - ifs
+  - aifs
+  - gfs
+  - icon_eu
+
+max_lead_hours: 96
+keep_runs: 8
+data_dir: data
+poll_minutes: 10
+
+observations:
+  metar: true
+  windycator: false        # no UK-aggregator coverage in the Med
+  ndbc_stations: []
+  openmeteo: false
+  focus: {lat: 39.45, lon: 2.55}   # Palma Bay
+  nmea:
+    enabled: false
+    transport: udp
+    port: 10110
+
+trust:
+  yacht: 1.0
+  metar: 0.85
+  ndbc: 0.9
+  windycator: 0.8
+  openmeteo: 0.4
+
+scoring:
+  window_h: 48
+  half_weight_nm: 30
+  lead_half_h: 24
+  recency_half_h: 12
+  err_scale_ms: 2.5
+  publish_window_h: 24

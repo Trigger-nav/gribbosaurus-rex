@@ -1,8 +1,48 @@
+import math
+
 import pandas as pd
+import pydeck as pdk
 import requests
 import streamlit as st
 
 API_URL = "http://127.0.0.1:8000"
+MS_TO_KN = 1.943844  # internals are SI; knots is a display convention
+
+# Source identity colors: dark-surface categorical slots (validated set),
+# assigned in fixed order — station/speed labels stay in text tokens.
+SOURCE_COLORS = {
+    "windycator": [57, 135, 229],   # blue
+    "yacht": [25, 158, 112],        # aqua
+    "metar": [201, 133, 0],         # yellow
+    "ndbc": [144, 133, 233],        # violet
+    "openmeteo": [213, 81, 129],    # magenta
+    "test": [110, 110, 110],
+}
+COVERAGE_COLOR = [217, 89, 38]      # orange — model domain outlines
+RACE_COLOR = [195, 194, 183]        # text-secondary — race area outline
+
+
+DARK_STYLE = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
+
+
+def _rect_path(b):
+    return [[b["lon_min"], b["lat_min"]], [b["lon_max"], b["lat_min"]],
+            [b["lon_max"], b["lat_max"]], [b["lon_min"], b["lat_max"]],
+            [b["lon_min"], b["lat_min"]]]
+
+
+def _outline_layer(b, color, name):
+    """Rectangle OUTLINE (explicitly unfilled polygon)."""
+    return pdk.Layer(
+        "PolygonLayer", data=[{"polygon": _rect_path(b), "name": name}],
+        get_polygon="polygon", stroked=True, filled=False,
+        get_line_color=color, line_width_min_pixels=2, pickable=False)
+
+
+def _zoom_for(b):
+    span = max(b["lon_max"] - b["lon_min"],
+               (b["lat_max"] - b["lat_min"]) * 1.4, 1e-6)
+    return max(4.5, min(10.5, math.log2(360.0 / span) - 0.5))
 
 st.set_page_config(page_title="Gribbosaurus Rex", page_icon="🦖", layout="wide")
 st.title("🦖 Gribbosaurus Rex")
@@ -48,6 +88,10 @@ for col, m in zip(cols, status["models"]):
                    if m["latest_cycle"] else "never fetched"),
             delta_color="off",
         )
+        st.caption(
+            f"{m['resolution']}  \n"
+            f"next run {m['next_cycle'][11:16]}Z, "
+            f"expected ~{m['next_expected_at'][11:16]}Z")
 
 if st.button("Check for new runs now"):
     requests.post(f"{API_URL}/fetch", timeout=600)
@@ -86,17 +130,114 @@ else:
 # ------------------------------------------------------------- observations
 st.header("Recent observations")
 
-obs_rows = api("/obs", window_h=24)
+cov_models = st.multiselect(
+    "Show model coverage", race_cfg["models"],
+    help="Outlines each model's native domain. Global models cover the "
+         "whole map and are listed below instead of drawn.")
+
+obs_rows = api("/obs", window_h=3)
+layers = []
+
+# race area outline (always)
+layers.append(_outline_layer(_b, RACE_COLOR + [200], race))
+
+# model coverage outlines (finite domains only)
+global_models = []
+for m in status["models"]:
+    if m["model"] not in cov_models:
+        continue
+    if m["domain"]:
+        layers.append(_outline_layer(m["domain"], COVERAGE_COLOR + [220],
+                                     f"{m['model']} domain"))
+    else:
+        global_models.append(m["model"])
+if global_models:
+    st.caption("Global coverage (whole map): "
+               + ", ".join(g.upper() for g in global_models))
+
 if obs_rows:
     odf = pd.DataFrame(obs_rows)
-    st.caption(f"{len(odf)} obs in the last 24h "
-               f"({', '.join(sorted(odf['source'].unique()))})")
-    st.map(odf.rename(columns={"lat": "latitude", "lon": "longitude"}),
-           size=10, zoom=7)
+    latest = (odf.sort_values("time")
+                 .groupby(["source", "station"], as_index=False).last())
+    latest["kn"] = (latest["wind_speed_ms"] * MS_TO_KN).round(1)
+    latest["gust_kn"] = (latest["gust_ms"] * MS_TO_KN).round(1)
+    latest["label"] = latest["kn"].map(
+        lambda v: f"{v:.0f}" if pd.notna(v) else "-")  # ASCII-safe fallback
+    # explicit r/g/b columns — a column of Python lists serializes
+    # unreliably through pydeck, which silently falls back to black
+    rgb = latest["source"].map(
+        lambda s: SOURCE_COLORS.get(s, [160, 160, 160]))
+    latest["cr"] = [c[0] for c in rgb]
+    latest["cg"] = [c[1] for c in rgb]
+    latest["cb"] = [c[2] for c in rgb]
+
+    # wind VECTOR per station: a line from the station pointing where the
+    # wind is going (dir is "coming from"), length scaled by speed.
+    # Built as GeoJSON — the most reliable geometry path through
+    # Streamlit's deck.gl JSON bridge (TextLayer glyph atlases and
+    # LineLayer width units both misbehave there).
+    span = max(_b["lon_max"] - _b["lon_min"], 0.5)
+    base_len = span / 12.0   # ~15kn vector ≈ 1/12 of the race width
+    features = []
+    for _, r in latest.iterrows():
+        if pd.isna(r["wind_dir_deg"]):
+            continue
+        flow = math.radians((r["wind_dir_deg"] + 180.0) % 360.0)
+        s = min(max((r["kn"] if pd.notna(r["kn"]) else 0) / 15.0, 0.35), 1.8)
+        elon = r["lon"] + base_len * s * math.sin(flow) \
+            / math.cos(math.radians(r["lat"]))
+        elat = r["lat"] + base_len * s * math.cos(flow)
+        features.append({
+            "type": "Feature",
+            "geometry": {"type": "LineString",
+                         "coordinates": [[r["lon"], r["lat"]], [elon, elat]]},
+            "properties": {"color": [int(r["cr"]), int(r["cg"]),
+                                     int(r["cb"])]},
+        })
+    vectors = {"type": "FeatureCollection", "features": features}
+
+    plot = latest[["lon", "lat", "label", "cr", "cg", "cb", "station",
+                   "source", "kn", "gust_kn", "wind_dir_deg", "time"]].copy()
+
+    layers += [
+        pdk.Layer(  # wind vector: points where the wind blows, len ~ speed
+            "GeoJsonLayer", data=vectors, stroked=True, filled=False,
+            get_line_color="properties.color",
+            line_width_units='"pixels"', get_line_width=2,
+            line_width_min_pixels=2, line_width_max_pixels=3),
+        pdk.Layer(  # station anchor dot, hued by source
+            "ScatterplotLayer", data=plot, get_position="[lon, lat]",
+            get_fill_color="[cr, cg, cb]", radius_min_pixels=3,
+            radius_max_pixels=5, pickable=True),
+        pdk.Layer(  # knots label in text ink, offset off the vector
+            "TextLayer", data=plot, get_position="[lon, lat]",
+            get_text="label", get_color=[255, 255, 255, 230], get_size=11,
+            get_pixel_offset=[0, 14], get_text_anchor='"middle"',
+            get_alignment_baseline='"center"'),
+    ]
+
+    n_src = ", ".join(f"{s} ({n})"
+                      for s, n in latest["source"].value_counts().items())
+    st.caption(f"{len(latest)} stations reporting in the last 3h — {n_src}. "
+               "Arrow shows where the wind is blowing to; number is knots.")
+
+    st.pydeck_chart(pdk.Deck(
+        map_style=DARK_STYLE,
+        initial_view_state=pdk.ViewState(
+            latitude=(_b["lat_min"] + _b["lat_max"]) / 2,
+            longitude=(_b["lon_min"] + _b["lon_max"]) / 2,
+            zoom=_zoom_for(_b)),
+        layers=layers,
+        tooltip={"text": "{station}\n{kn} kn (gust {gust_kn}) from "
+                         "{wind_dir_deg}°\nsource: {source}\n{time}"},
+    ), use_container_width=True)
+
     with st.expander("Observation table"):
-        st.dataframe(odf, use_container_width=True)
+        full = pd.DataFrame(api("/obs", window_h=24))
+        full["kn"] = (full["wind_speed_ms"] * MS_TO_KN).round(1)
+        st.dataframe(full, use_container_width=True)
 else:
-    st.info("No observations yet.")
+    st.info("No observations in the last 3 hours.")
 
 # ------------------------------------------------------------ point forecast
 st.header("Point forecast — all models")

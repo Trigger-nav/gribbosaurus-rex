@@ -1,0 +1,50 @@
+# Fastnet — Cowes/Solent start, Land's End, Celtic Sea, Fastnet Rock,
+# back past the Scillies to the Cherbourg finish (formerly fastnet-2027;
+# next edition 2027).
+
+name: fastnet
+description: Fastnet course — Solent to Fastnet Rock to Cherbourg
+enabled: true
+
+bbox:
+  lat_min: 48.8
+  lat_max: 52.2
+  lon_min: -10.8
+  lon_max: -1.0
+
+models:
+  - ifs
+  - aifs
+  - gfs
+  - icon_eu
+
+max_lead_hours: 144
+keep_runs: 8
+data_dir: data
+poll_minutes: 10
+
+observations:
+  metar: true
+  windycator: true
+  ndbc_stations: []
+  openmeteo: false
+  focus: {lat: 50.0, lon: -6.0}    # mid-course, Celtic Sea approaches
+  nmea:
+    enabled: false
+    transport: udp
+    port: 10110
+
+trust:
+  yacht: 1.0
+  metar: 0.85
+  ndbc: 0.9
+  windycator: 0.8
+  openmeteo: 0.4
+
+scoring:
+  window_h: 48
+  half_weight_nm: 60
+  lead_half_h: 36
+  recency_half_h: 12
+  err_scale_ms: 2.5
+  publish_window_h: 24

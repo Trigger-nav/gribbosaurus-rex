@@ -34,8 +34,8 @@ UTC = timezone.utc
 
 
 def test_config_loads():
-    cfg = load_config(REPO / "configs" / "balearics.yaml")
-    assert cfg.name == "balearics-summer"
+    cfg = load_config(REPO / "configs" / "central-med.yaml")
+    assert cfg.name == "central-med"
     assert cfg.bbox.contains(39.5, 2.6)
     assert "ifs" in cfg.models
     assert cfg.db_path.name == "gribbo.sqlite"
@@ -144,7 +144,10 @@ def test_icon_urls_and_domain_check():
                    "icon-eu_europe_regular-lat-lon_single-level_"
                    "2026071300_005_U_10M.grib2.bz2")
     f._check_domain(RaceConfig(name="t", bbox=BBox(38.0, 40.5, 0.5, 3.5)))
-    try:  # Caribbean is outside ICON-EU
+    # fleet union bbox including the Caribbean OVERLAPS Europe -> allowed
+    # (icon files are full-domain; out-of-domain races exclude icon_eu)
+    f._check_domain(RaceConfig(name="t", bbox=BBox(15.5, 52.2, -63.8, 16.5)))
+    try:  # a bbox with NO overlap at all must still fail loudly
         f._check_domain(RaceConfig(name="t", bbox=BBox(12.0, 18.0, -65.0, -59.0)))
         raise AssertionError("should have raised")
     except RuntimeError:
@@ -155,6 +158,30 @@ def test_cycle_ids():
     c = datetime(2026, 7, 13, 6, 0, tzinfo=UTC)
     assert cycle_iso(c) == "20260713T06Z"
     assert cycle_db(c) == "2026-07-13T06:00:00+00:00"
+
+
+def test_next_expected_and_ui_metadata():
+    f = GfsFetcher.__new__(GfsFetcher)
+    # at 12:00, newest published GFS candidate is 06z (3.5h lag) -> next
+    # cycle is 12z, expected ~15:30
+    now = datetime(2026, 7, 13, 12, 0, tzinfo=UTC)
+    nxt, exp = f.next_expected(now)
+    assert nxt == datetime(2026, 7, 13, 12, 0, tzinfo=UTC)
+    assert exp == datetime(2026, 7, 13, 15, 30, tzinfo=UTC)
+
+    # late evening rolls over to next day's 00z
+    now = datetime(2026, 7, 13, 23, 0, tzinfo=UTC)
+    nxt, _ = f.next_expected(now)
+    assert nxt == datetime(2026, 7, 14, 0, 0, tzinfo=UTC)
+
+    # every fetcher carries UI metadata; ICON-EU has a finite domain
+    from gribbosaurus_rex.fetch.registry import FETCHERS
+
+    for cls in FETCHERS.values():
+        assert cls.resolution != "?"
+    assert IconEuFetcher.domain is not None
+    assert IconEuFetcher.domain["lat_max"] == 70.5
+    assert EcmwfOpenFetcher.domain is None  # global
 
 
 def test_wind_roundtrip_and_convention():
