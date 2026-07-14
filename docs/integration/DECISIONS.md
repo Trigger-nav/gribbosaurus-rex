@@ -17,6 +17,7 @@ defaults:
 | `yacht` / vessel telemetry | 1.00 | wind, pressure (waves n/a) | built — NMEA 0183 UDP/TCP listener + Expedition log importer. The future Stingray fleet/pilot-vessel feed enters here: it's the same ObsStore interface, one new writer. |
 | `buoy` (moored: NDBC, Puertos del Estado, EMODnet) | 0.90 | wind, pressure, **waves (hs, period, dir)** | NDBC built (untested live — no Med stations); Spanish/EMODnet buoys are the priority wave-obs source, to build with wave scoring |
 | `metar` (coastal airports) | 0.85 | wind, pressure | built, live-verified. Land-sited: usable for wind/pressure, never for waves; coastal-effect caveat priced into trust |
+| `windycator` (UK aggregator, weather.ianmillard.com) | 0.80 | wind, some pressure | built 2026-07-14. Aggregates Southampton VTS portlog (Bramble/Calshot/Nab), weatherfile platforms (Lymington/Hurst), CCO piers, NCI + club stations — the obs UK sailors actually use. Mixed provenance hence 0.8; polite polling (identified UA, fleet cadence). Feed: `latest.php?coords=bbox`, knots -> m/s at boundary, local-tz timestamps -> UTC, stale/sentinel stations filtered |
 | `ship` (VOS/synop reports) | 0.70 | wind, pressure, waves | future, by agreement |
 | `openmeteo` (served API) | 0.40 | wind, pressure | built, **disabled by default** — model-derived, not ground truth; excluded from published scores entirely (circularity) |
 

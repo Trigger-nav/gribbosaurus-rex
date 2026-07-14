@@ -24,6 +24,7 @@ poll_minutes: 10
 
 observations:
   metar: true            # EGHI Southampton, EGHH Bournemouth, EGJB/EGJJ...
+  windycator: true       # Bramble Post, Calshot, Hurst, Lymington, piers...
   ndbc_stations: []
   openmeteo: false
   focus: {lat: 50.76, lon: -1.30}   # Cowes
@@ -36,6 +37,7 @@ trust:
   yacht: 1.0
   metar: 0.85
   ndbc: 0.9
+  windycator: 0.8       # aggregated club/marina/VTS stations, quality varies
   openmeteo: 0.4
 
 scoring:

@@ -62,6 +62,7 @@ class NmeaConfig:
 @dataclass(frozen=True)
 class ObsConfig:
     metar: bool = True
+    windycator: bool = False   # UK coastal aggregator (Solent/Channel/etc.)
     ndbc_stations: tuple[str, ...] = ()
     openmeteo: bool = False
     focus_lat: float | None = None   # distance-weight anchor when no yacht fix
@@ -79,7 +80,8 @@ class ScoringConfig:
     publish_window_h: float = 24.0  # arbiter/scores.json obs window
 
 
-DEFAULT_TRUST = {"yacht": 1.0, "metar": 0.85, "ndbc": 0.9, "openmeteo": 0.4}
+DEFAULT_TRUST = {"yacht": 1.0, "metar": 0.85, "ndbc": 0.9,
+                 "windycator": 0.8, "openmeteo": 0.4}
 
 
 @dataclass(frozen=True)
@@ -136,6 +138,7 @@ def load_config(path: str | os.PathLike | None = None) -> RaceConfig:
     focus = obs_raw.get("focus") or {}
     obs = ObsConfig(
         metar=bool(obs_raw.get("metar", True)),
+        windycator=bool(obs_raw.get("windycator", False)),
         ndbc_stations=tuple(str(s) for s in obs_raw.get("ndbc_stations", []) or []),
         openmeteo=bool(obs_raw.get("openmeteo", False)),
         focus_lat=float(focus["lat"]) if "lat" in focus else None,

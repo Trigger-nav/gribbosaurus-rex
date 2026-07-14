@@ -156,6 +156,13 @@ def fetch_all(cfg: RaceConfig, store: ObsStore) -> int:
             new += fetch_metar(cfg, store)
         except Exception:  # noqa: BLE001
             log.exception("metar fetch failed")
+    if cfg.obs.windycator:
+        from gribbosaurus_rex.obs.windycator import fetch_windycator
+
+        try:
+            new += fetch_windycator(cfg, store)
+        except Exception:  # noqa: BLE001
+            log.exception("windycator fetch failed")
     if cfg.obs.ndbc_stations:
         try:
             new += fetch_ndbc(cfg, store)

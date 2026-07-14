@@ -148,6 +148,19 @@ path needs a live check: `python scripts/live_smoke_export.py`, then
 load an exported file into a router (Expedition) as the real acceptance
 test.
 
+## Windycator obs source (added 2026-07-14)
+
+`obs/windycator.py` ingests weather.ianmillard.com/windycator — UK
+coastal stations incl. Bramble Post/Calshot/Nab Tower (Southampton VTS),
+Lymington/Hurst platforms, CCO piers, club anemometers. Enabled per race
+(`observations.windycator: true` on solent + fastnet-2027; useless for
+the Med). Trust 0.8. Feed schema + quirks documented in the module;
+tests/fixtures/windycator_sample.json is a REAL captured payload — if
+the feed format drifts, recapture from the browser and update it.
+Courtesy note: it's Ian Millard's personal service — polling is one
+bbox request per enabled race per poll cycle with an identifying UA;
+consider dropping him a note if this becomes load-bearing for racing.
+
 ## Roadmap next steps (in rough order)
 
 1. ~~Cleanup + guard~~ Done 2026-07-13: smoke loopback writes

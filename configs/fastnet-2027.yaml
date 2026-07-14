@@ -26,6 +26,7 @@ poll_minutes: 10
 
 observations:
   metar: true             # EGHE Scilly, EICK Cork, EIWF Waterford, Channel...
+  windycator: true        # UK south-coast stations along the course
   ndbc_stations: []       # UK/Irish wave buoys join with wave scoring
   openmeteo: false
   focus: {lat: 50.0, lon: -6.0}     # mid-course, Celtic Sea approaches
@@ -38,6 +39,7 @@ trust:
   yacht: 1.0
   metar: 0.85
   ndbc: 0.9
+  windycator: 0.8
   openmeteo: 0.4
 
 scoring:
