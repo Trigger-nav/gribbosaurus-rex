@@ -188,10 +188,24 @@ english-channel bbox widened to -5.2..2.1 to include them. Caribbean:
 discovery: table -> bbox filter -> freshness probe -> paste-ready lists;
 run it when adding a race. NDBC fetcher fixed 2026-07-14: station-table
 LOCATION parsing was wrong (hemisphere token), and the table now
-downloads once per pass. **Med gap**: Spanish (Puertos del Estado) and
-Italian (ISPRA RON) buoys likely absent from NDBC — if the finder
-confirms zero for central-med/middle-sea-race, those networks' own APIs
-are the roadmap item (both have open-ish endpoints; not yet scoped).
+downloads once per pass.
+
+**Med gap — CONFIRMED (finder returned zero for central-med and
+middle-sea-race) — and scoped:**
+
+- Puertos del Estado (Spain): the Portus web app's API is open, no auth
+  (verified in-browser 2026-07-20). Base `https://portus.puertos.es/
+  portussvr/api/`; `ubicaciones/` lists all stations (Balearics buoys
+  incl.), `puntosMalla/hist/WIND|WAVE|CURRENTS` etc. exist. TODO for the
+  integrator: click a buoy on portus.puertos.es with devtools open to
+  capture the real-time-station-data endpoint shape, then write
+  `obs/portus.py` mirroring `obs/windycator.py` (bbox filter from the
+  ubicaciones list, SI conversion, trust ~0.9 — these are proper moored
+  buoys, wave-capable for the Stingray wave scoring).
+- Italy (middle-sea-race): ISPRA's RON wave buoys + mareographic
+  network (dati.isprambiente.it) and Sicily's SIAS — unverified, scope
+  the same way. Fallback covering the whole Med: Copernicus Marine
+  INSITU TAC (free registration, NetCDF, heavier).
 
 ## Roadmap next steps (in rough order)
 
