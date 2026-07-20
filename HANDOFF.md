@@ -176,6 +176,23 @@ Consequence of the Caribbean joining the fleet: the GFS fetch domain is
 now trans-Atlantic (still small — bbox-subset) and existing GFS runs
 auto-refetch once via the bbox-coverage rule.
 
+## Marine buoy obs via NDBC/GTS (added 2026-07-14)
+
+NDBC's realtime2 feed relays the global GTS marine network. Live-confirmed
+via radial search: UK lightvessels (62103 Channel, 62305 Greenwich, 62107
+Seven Stones, 62304 Sandettie, 62170 F3) and W Channel buoys (62030,
+62050) — now configured for english-channel + fastnet (Irish M3 62092 /
+M5 62094 configured from documentation, verify with the finder). The
+english-channel bbox widened to -5.2..2.1 to include them. Caribbean:
+42060 in the C600 box. `scripts/find_ndbc_stations.py` automates
+discovery: table -> bbox filter -> freshness probe -> paste-ready lists;
+run it when adding a race. NDBC fetcher fixed 2026-07-14: station-table
+LOCATION parsing was wrong (hemisphere token), and the table now
+downloads once per pass. **Med gap**: Spanish (Puertos del Estado) and
+Italian (ISPRA RON) buoys likely absent from NDBC — if the finder
+confirms zero for central-med/middle-sea-race, those networks' own APIs
+are the roadmap item (both have open-ish endpoints; not yet scoped).
+
 ## Roadmap next steps (in rough order)
 
 1. ~~Cleanup + guard~~ Done 2026-07-13: smoke loopback writes

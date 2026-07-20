@@ -27,7 +27,9 @@ poll_minutes: 10
 observations:
   metar: true      # TAPA Antigua, TFFR Guadeloupe, TNCM St Maarten...
   windycator: false
-  ndbc_stations: []   # candidates: NDBC Caribbean buoys, add when needed
+  # 42060 (Eastern Caribbean buoy) sits inside the course box west of
+  # Montserrat. Audit with scripts/find_ndbc_stations.py before racing.
+  ndbc_stations: ["42060"]
   openmeteo: false
   focus: {lat: 17.06, lon: -61.79}   # English Harbour, Antigua
   nmea:

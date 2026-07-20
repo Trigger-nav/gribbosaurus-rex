@@ -1,4 +1,5 @@
 import math
+from urllib.parse import quote
 
 import pandas as pd
 import pydeck as pdk
@@ -20,6 +21,25 @@ SOURCE_COLORS = {
 }
 COVERAGE_COLOR = [217, 89, 38]      # orange — model domain outlines
 RACE_COLOR = [195, 194, 183]        # text-secondary — race area outline
+
+
+def _arrow_icon(rgb):
+    """Arrow SVG (pointing up) as a data-URL icon dict for IconLayer."""
+    color = f"rgb({rgb[0]},{rgb[1]},{rgb[2]})"
+    svg = (
+        "<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' "
+        "viewBox='0 0 48 48'>"
+        f"<g stroke='{color}' stroke-width='5' fill='none' "
+        "stroke-linecap='round' stroke-linejoin='round'>"
+        "<path d='M24 4 L24 42'/>"
+        "<path d='M24 4 L14 17'/><path d='M24 4 L34 17'/>"
+        "</g></svg>")
+    return {"url": "data:image/svg+xml;charset=utf-8," + quote(svg),
+            "width": 48, "height": 48, "anchorX": 24, "anchorY": 24}
+
+
+ARROW_ICONS = {src: _arrow_icon(rgb) for src, rgb in SOURCE_COLORS.items()}
+ARROW_FALLBACK = _arrow_icon([160, 160, 160])
 
 
 DARK_STYLE = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
@@ -171,48 +191,45 @@ if obs_rows:
     latest["cg"] = [c[1] for c in rgb]
     latest["cb"] = [c[2] for c in rgb]
 
-    # wind VECTOR per station: a line from the station pointing where the
-    # wind is going (dir is "coming from"), length scaled by speed.
-    # Built as GeoJSON — the most reliable geometry path through
-    # Streamlit's deck.gl JSON bridge (TextLayer glyph atlases and
-    # LineLayer width units both misbehave there).
-    span = max(_b["lon_max"] - _b["lon_min"], 0.5)
-    base_len = span / 12.0   # ~15kn vector ≈ 1/12 of the race width
-    features = []
-    for _, r in latest.iterrows():
-        if pd.isna(r["wind_dir_deg"]):
-            continue
-        flow = math.radians((r["wind_dir_deg"] + 180.0) % 360.0)
-        s = min(max((r["kn"] if pd.notna(r["kn"]) else 0) / 15.0, 0.35), 1.8)
-        elon = r["lon"] + base_len * s * math.sin(flow) \
-            / math.cos(math.radians(r["lat"]))
-        elat = r["lat"] + base_len * s * math.cos(flow)
-        features.append({
-            "type": "Feature",
-            "geometry": {"type": "LineString",
-                         "coordinates": [[r["lon"], r["lat"]], [elon, elat]]},
-            "properties": {"color": [int(r["cr"]), int(r["cg"]),
-                                     int(r["cb"])]},
-        })
-    vectors = {"type": "FeatureCollection", "features": features}
+    # wind ARROW per station: an IconLayer arrow rotated to where the wind
+    # is GOING (dir is "coming from"), sized in SCREEN PIXELS by speed —
+    # constant readability at every zoom (geographic lines don't give
+    # that). Icons are per-source coloured SVG data-URLs; pickable for
+    # the hover tooltip.
+    latest["icon_data"] = latest["source"].map(
+        lambda s: ARROW_ICONS.get(s, ARROW_FALLBACK))
+    # icon points up; CCW rotation a moves the tip to bearing -a, and we
+    # want bearing dir+180  =>  a = 180 - dir  (mod 360)
+    latest["angle"] = (180.0 - latest["wind_dir_deg"].fillna(0.0)) % 360.0
+    latest["size_px"] = (16 + latest["kn"].fillna(0.0).clip(0, 45) * 0.8) \
+        .round(0)
+    # pre-formatted tooltip fields (raw NaN renders as 'nan' otherwise)
+    latest["kn_s"] = latest["kn"].map(
+        lambda v: f"{v:.1f}" if pd.notna(v) else "?")
+    latest["gust_s"] = latest["gust_kn"].map(
+        lambda v: f"{v:.0f}" if pd.notna(v) else "-")
+    latest["dir_s"] = latest["wind_dir_deg"].map(
+        lambda v: f"{v:.0f}" if pd.notna(v) else "?")
 
-    plot = latest[["lon", "lat", "label", "cr", "cg", "cb", "station",
-                   "source", "kn", "gust_kn", "wind_dir_deg", "time"]].copy()
+    has_dir = latest["wind_dir_deg"].notna()
+    cols = ["lon", "lat", "label", "cr", "cg", "cb", "icon_data", "angle",
+            "size_px", "station", "source", "kn_s", "gust_s", "dir_s", "time"]
+    plot = latest[cols].copy()
 
     layers += [
-        pdk.Layer(  # wind vector: points where the wind blows, len ~ speed
-            "GeoJsonLayer", data=vectors, stroked=True, filled=False,
-            get_line_color="properties.color",
-            line_width_units='"pixels"', get_line_width=2,
-            line_width_min_pixels=2, line_width_max_pixels=3),
-        pdk.Layer(  # station anchor dot, hued by source
-            "ScatterplotLayer", data=plot, get_position="[lon, lat]",
-            get_fill_color="[cr, cg, cb]", radius_min_pixels=3,
-            radius_max_pixels=5, pickable=True),
-        pdk.Layer(  # knots label in text ink, offset off the vector
+        pdk.Layer(  # arrows for stations with direction
+            "IconLayer", data=plot[has_dir.values],
+            get_position="[lon, lat]", get_icon="icon_data",
+            get_size="size_px", get_angle="angle",
+            size_min_pixels=14, size_max_pixels=52, pickable=True),
+        pdk.Layer(  # small dot for direction-less stations (pressure-only)
+            "ScatterplotLayer", data=plot[(~has_dir).values],
+            get_position="[lon, lat]", get_fill_color="[cr, cg, cb]",
+            radius_min_pixels=4, radius_max_pixels=6, pickable=True),
+        pdk.Layer(  # knots label in text ink, tucked under the arrow
             "TextLayer", data=plot, get_position="[lon, lat]",
             get_text="label", get_color=[255, 255, 255, 230], get_size=11,
-            get_pixel_offset=[0, 14], get_text_anchor='"middle"',
+            get_pixel_offset=[0, 18], get_text_anchor='"middle"',
             get_alignment_baseline='"center"'),
     ]
 
@@ -228,8 +245,8 @@ if obs_rows:
             longitude=(_b["lon_min"] + _b["lon_max"]) / 2,
             zoom=_zoom_for(_b)),
         layers=layers,
-        tooltip={"text": "{station}\n{kn} kn (gust {gust_kn}) from "
-                         "{wind_dir_deg}°\nsource: {source}\n{time}"},
+        tooltip={"text": "{station}\n{kn_s} kn, gust {gust_s}, "
+                         "from {dir_s}°\nsource: {source}\n{time}"},
     ), use_container_width=True)
 
     with st.expander("Observation table"):

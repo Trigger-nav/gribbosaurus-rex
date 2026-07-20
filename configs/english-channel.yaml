@@ -1,16 +1,17 @@
-# English Channel — Solent-centred, widened to the RORC Channel racing
-# area (formerly solent). Covers Cowes, the central/eastern Channel,
-# Cherbourg peninsula and the Channel Islands' northern approaches.
+# English Channel — Solent-centred, covering the RORC Channel racing area
+# from the Western Approaches boundary to the Dover Strait (formerly
+# solent). Box sized to include the GTS lightvessels/buoys: Channel LV,
+# Greenwich LV, Sandettie LV, F3, and the Plymouth-area moorings.
 
 name: english-channel
 description: English Channel — Solent, south coast and Channel crossings
 enabled: true
 
 bbox:
-  lat_min: 49.3
-  lat_max: 51.2
-  lon_min: -3.5
-  lon_max: 1.5
+  lat_min: 49.2
+  lat_max: 51.3
+  lon_min: -5.2
+  lon_max: 2.1
 
 models:
   - ifs
@@ -26,7 +27,10 @@ poll_minutes: 10
 observations:
   metar: true
   windycator: true         # Bramble Post, Calshot, Hurst, piers, clubs...
-  ndbc_stations: []
+  # GTS marine stations via NDBC, live-confirmed 2026-07-14 (radial search):
+  # 62103 Channel LV, 62305 Greenwich LV, 62030+62050 W Channel buoys,
+  # 62304 Sandettie LV, 62170 F3. Re-audit: scripts/find_ndbc_stations.py
+  ndbc_stations: ["62103", "62305", "62030", "62050", "62304", "62170"]
   openmeteo: false
   focus: {lat: 50.76, lon: -1.30}   # Cowes
   nmea:

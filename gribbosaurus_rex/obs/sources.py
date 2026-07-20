@@ -82,14 +82,61 @@ def fetch_metar(cfg: RaceConfig, store: ObsStore) -> int:
 
 # ---------------------------------------------------------------- NDBC buoys
 
+def parse_station_location(location_field: str) -> tuple[float, float] | None:
+    """NDBC station_table LOCATION field -> (lat, lon).
+
+    Format: `50.103 N 6.100 W (50°6'10" N ...)` — value THEN hemisphere
+    letter as separate tokens. Pure; unit-tested.
+    """
+    t = location_field.split()
+    try:
+        lat = float(t[0]) * (1 if t[1].upper() == "N" else -1)
+        lon = float(t[2]) * (1 if t[3].upper() == "E" else -1)
+    except (ValueError, IndexError):
+        return None
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return None
+    return lat, lon
+
+
+def _ndbc_positions(station_ids: tuple[str, ...]) -> dict:
+    """Positions for the requested stations — ONE station-table download
+    per pass (the table is ~1MB; never fetch it per buoy)."""
+    if not station_ids:
+        return {}
+    wanted = {str(s).lower() for s in station_ids}
+    out: dict = {}
+    try:
+        r = _session.get(
+            "https://www.ndbc.noaa.gov/data/stations/station_table.txt",
+            timeout=30)
+        r.raise_for_status()
+    except requests.RequestException as e:
+        log.warning("ndbc station table unavailable: %s", e)
+        return {}
+    for line in r.text.splitlines():
+        parts = [p.strip() for p in line.split("|")]
+        if len(parts) > 6 and parts[0].lower() in wanted:
+            pos = parse_station_location(parts[6])
+            if pos:
+                out[parts[0].lower()] = pos
+    return out
+
+
 def fetch_ndbc(cfg: RaceConfig, store: ObsStore) -> int:
     """NDBC realtime2 text feed for the configured buoy ids.
 
     Column layout: YY MM DD hh mm WDIR WSPD GST WVHT ... PRES ...
     WSPD/GST in m/s, PRES in hPa, MM = missing.
     """
+    positions = _ndbc_positions(tuple(cfg.obs.ndbc_stations))
     new = 0
     for sid in cfg.obs.ndbc_stations:
+        pos = positions.get(str(sid).lower())
+        if pos is None:
+            log.warning("ndbc %s: no position in station table — skipping", sid)
+            continue
+        lat, lon = pos
         try:
             r = _session.get(f"{NDBC_RT2}/{sid}.txt", timeout=30)
             if r.status_code == 404:
@@ -99,27 +146,6 @@ def fetch_ndbc(cfg: RaceConfig, store: ObsStore) -> int:
             lines = r.text.splitlines()
             header = lines[0].lstrip("#").split()
             idx = {name: i for i, name in enumerate(header)}
-            # station metadata (lat/lon) comes from a separate call, once
-            meta = _session.get(
-                f"https://www.ndbc.noaa.gov/data/stations/station_table.txt",
-                timeout=30).text
-            lat = lon = None
-            for ml in meta.splitlines():
-                parts = [p.strip() for p in ml.split("|")]
-                if parts and parts[0].lower() == str(sid).lower() and len(parts) > 6:
-                    try:
-                        lat = float(parts[6].split()[0].rstrip("NS"))
-                        if parts[6].split()[0].endswith("S"):
-                            lat = -lat
-                        lon = float(parts[6].split()[1].rstrip("EW"))
-                        if parts[6].split()[1].endswith("W"):
-                            lon = -lon
-                    except (ValueError, IndexError):
-                        pass
-                    break
-            if lat is None:
-                log.warning("ndbc %s: no position found — skipping", sid)
-                continue
 
             for line in lines[2:26]:  # newest ~24 rows (data is newest-first)
                 p = line.split()

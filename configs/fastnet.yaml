@@ -26,7 +26,10 @@ poll_minutes: 10
 observations:
   metar: true
   windycator: true
-  ndbc_stations: []
+  # GTS marine stations via NDBC: Seven Stones LV at Land's End, Irish
+  # M3/M5 buoys on the Celtic Sea legs, W Channel buoys + Channel LV for
+  # start/finish. Audit with scripts/find_ndbc_stations.py before racing.
+  ndbc_stations: ["62107", "62092", "62094", "62030", "62050", "62103"]
   openmeteo: false
   focus: {lat: 50.0, lon: -6.0}    # mid-course, Celtic Sea approaches
   nmea:
