@@ -1,0 +1,26 @@
+[Unit]
+Description=Gribbosaurus Rex dashboard (Streamlit)
+After=network-online.target gribbo-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gribbo
+Group=gribbo
+WorkingDirectory=/opt/gribbo/app
+EnvironmentFile=/etc/gribbo/env
+Environment=GRIBBO_API_URL=http://127.0.0.1:8010
+ExecStart=/opt/gribbo/venv/bin/streamlit run dashboard/app.py \
+    --server.address 127.0.0.1 --server.port 8511 --server.headless true \
+    --browser.gatherUsageStats false
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/gribbo/app/data
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

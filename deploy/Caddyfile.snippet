@@ -1,0 +1,23 @@
+# Gribbosaurus Rex site block — append to /etc/caddy/Caddyfile and edit
+# the hostnames. Caddy provisions TLS automatically.
+#
+# Stingray consumes https://gribbo.example.com/scores.json (ETag'd).
+
+gribbo.example.com {
+	reverse_proxy 127.0.0.1:8010
+
+	# modest shared-box protection: cache scores.json briefly at the edge
+	@scores path /scores.json
+	header @scores Cache-Control "public, max-age=60"
+}
+
+# Optional: the Streamlit dashboard on its own hostname.
+# Consider basicauth if the box is public:
+#   caddy hash-password   ->  paste below
+#
+#dash.gribbo.example.com {
+#	reverse_proxy 127.0.0.1:8511
+#	#basicauth {
+#	#	jack <hash>
+#	#}
+#}

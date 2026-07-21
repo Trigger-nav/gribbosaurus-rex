@@ -207,6 +207,49 @@ middle-sea-race) — and scoped:**
   the same way. Fallback covering the whole Med: Copernicus Marine
   INSITU TAC (free registration, NetCDF, heavier).
 
+## Deployment kit (added 2026-07-20)
+
+`deploy/` contains the full Hetzner-cohost kit per contract §Deployment:
+`install.sh` (idempotent; gribbo user, venv, shared libeccodes, env
+seed, units), `gribbo-api.service` (uvicorn :8010, API only),
+`gribbo-arbiter.timer`+`.service` (arbiter-once every 10 min — fetching
+runs OUTSIDE the API process in production; `GRIBBO_WATCH` stays unset),
+`gribbo-dashboard.service` (streamlit :8511, localhost-bound),
+`Caddyfile.snippet`, `env.example` (-> `/etc/gribbo/env`, where model
+API keys will live), `update.sh`. Dashboard reads `GRIBBO_API_URL`.
+See `deploy/README.md` incl. how to migrate the Mac's verification DB.
+Not yet run on a real box — first install is the live test.
+
+## High-res model roadmap (specced 2026-07-20 — the racing-grade tier)
+
+Registry pattern means each is a fetcher module + registry entry +
+PUBLISH_NAMES entry + race-config listing. Per-race `models:` lists
+already handle domains. In priority order:
+
+1. **AROME (Météo-France, 1.3km)** — open data via the Météo-France
+   portal API, free key required (`METEOFRANCE_API_KEY` in env).
+   Regular lat-lon GRIB2 packages -> existing extractor works as-is.
+   Domain covers english-channel, most of fastnet, and central-med.
+   Publish name proposal: `mf_arome`.
+2. **ARPEGE (Météo-France)** — same key/API. 0.1° Europe + 0.25°
+   global (global covers caribbean-600). `mf_arpege`.
+3. **AROME-Antilles (2.5km)** — same key/API, overseas domain around
+   the Leewards: THE high-res model for caribbean-600. `mf_arome_antilles`.
+4. **ICON-2i (ItaliaMeteo/ARPAE, 2.2km Italy)** — via the Mistral/
+   Meteo-Hub open platform (registration). middle-sea-race's high-res.
+   Regular lat-lon. `im_icon_2i`.
+5. **UKV (Met Office DataHub, 1.5km)** — free-tier key
+   (`DATAHUB_API_KEY`). CAUTION: native Lambert azimuthal grid — the
+   extractor needs a 2D-coordinate interpolation path (extract.py
+   currently assumes 1D regular lat/lon). Budget real work. `ukmo_ukv`.
+6. **LaMMA WRF (Tuscany)** — scope only if ICON-2i + AROME leave a
+   Med gap; raw GRIB availability unconfirmed.
+
+Model-count consequences to watch: verification cost per pass grows
+linearly (fine), dashboard tiles wrap beyond ~6 models (switch to two
+rows), and STATIC_WEIGHTS priors in pipeline.py need entries for new
+models (or they get the 0.1 default until scores take over).
+
 ## Roadmap next steps (in rough order)
 
 1. ~~Cleanup + guard~~ Done 2026-07-13: smoke loopback writes

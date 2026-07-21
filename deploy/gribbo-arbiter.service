@@ -1,0 +1,20 @@
+[Unit]
+Description=Gribbosaurus Rex arbiter pass (fetch runs + obs, verify, publish scores.json)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=gribbo
+Group=gribbo
+WorkingDirectory=/opt/gribbo/app
+EnvironmentFile=/etc/gribbo/env
+ExecStart=/opt/gribbo/venv/bin/python -m gribbosaurus_rex arbiter-once
+# a full multi-model fetch can take a while; be generous but bounded
+TimeoutStartSec=45min
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/gribbo/app/data
+PrivateTmp=true

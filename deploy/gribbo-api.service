@@ -1,0 +1,26 @@
+[Unit]
+Description=Gribbosaurus Rex API (scores.json + dashboard backend)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gribbo
+Group=gribbo
+WorkingDirectory=/opt/gribbo/app
+EnvironmentFile=/etc/gribbo/env
+# API only — the arbiter timer does the fetching (GRIBBO_WATCH unset)
+ExecStart=/opt/gribbo/venv/bin/uvicorn gribbosaurus_rex.api.main:app \
+    --host 127.0.0.1 --port 8010
+Restart=on-failure
+RestartSec=5
+
+# hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/gribbo/app/data
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

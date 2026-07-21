@@ -1,4 +1,5 @@
 import math
+import os
 from urllib.parse import quote
 
 import pandas as pd
@@ -6,7 +7,8 @@ import pydeck as pdk
 import requests
 import streamlit as st
 
-API_URL = "http://127.0.0.1:8000"
+# local default; the server deployment points this at the service port
+API_URL = os.environ.get("GRIBBO_API_URL", "http://127.0.0.1:8000")
 MS_TO_KN = 1.943844  # internals are SI; knots is a display convention
 
 # Source identity colors: dark-surface categorical slots (validated set),

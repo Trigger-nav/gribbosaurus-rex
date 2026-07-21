@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the Gribbosaurus Rex arbiter every 10 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=10min
+RandomizedDelaySec=60
+Persistent=true
+
+[Install]
+WantedBy=timers.target
