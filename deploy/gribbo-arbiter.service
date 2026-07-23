@@ -13,6 +13,17 @@ ExecStart=/opt/gribbo/venv/bin/python -m gribbosaurus_rex arbiter-once
 # a full multi-model fetch can take a while; be generous but bounded
 TimeoutStartSec=45min
 
+# Memory guardrails on the shared box: MemoryHigh throttles+swaps this pass
+# when it grows past the soft cap (slows it down); MemoryMax is the hard
+# ceiling that kills only THIS unit if it runs away — never the Stingray
+# planner or the API. Needs swap enabled to degrade gracefully:
+#   fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile \
+#     && swapon /swapfile && echo '/swapfile none swap sw 0 0' >>/etc/fstab
+# Tune the caps down if the box gets busier.
+MemoryHigh=1600M
+MemoryMax=2200M
+MemorySwapMax=3G
+
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true

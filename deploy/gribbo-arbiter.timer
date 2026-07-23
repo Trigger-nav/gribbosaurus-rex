@@ -1,9 +1,14 @@
 [Unit]
-Description=Run the Gribbosaurus Rex arbiter every 10 minutes
+Description=Run the Gribbosaurus Rex arbiter every 20 minutes
 
 [Timer]
 OnBootSec=2min
-OnUnitInactiveSec=10min
+# 20 min: the high-res models (AROME 3-hourly, ARPEGE 6-hourly, ECMWF
+# 6–12-hourly) publish far slower than this, so a tighter cadence just
+# saturates the 4 GB box (OOM) and trips ECMWF's rate limiter. Inactive
+# timer = next run starts 20 min AFTER the previous finishes, so long
+# high-res passes never overlap.
+OnUnitInactiveSec=20min
 RandomizedDelaySec=60
 Persistent=true
 
