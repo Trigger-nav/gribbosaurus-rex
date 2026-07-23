@@ -286,6 +286,33 @@ token below is pinned against the live API, not guessed.
 - Discovery tooling kept: `scripts/live_smoke_meteofrance.py` (end-to-end),
   `scripts/mf_discover.py` + `scripts/mf_probe.py` (enumerate packages and
   per-run time tokens — handy when Météo-France adds models/grids).
+
+### High-res load (2026-07-23) — why not all races
+
+On the shared **CPX21 (2 vCPU / 4 GB)** the full high-res fleet (AROME +
+ARPEGE-0.1 + ARPEGE-global + AROME-OM across all 5 races) could not finish
+one arbiter pass inside the 45-min timeout: fetch is fine (ARPEGE 0.1 ≈
+625 MB/run) and memory is fine after the eccodes-close fix (~1.5 GB peak,
+swap present), but the **verify step re-decodes each big grid per-race**
+and burns ~38 min CPU on 2 vCPUs → timeout → nothing published (scores.json
+went stale). Fixes applied in order: swap (stops OOM), `MemoryHigh/Max` on
+the unit (protects the Stingray planner), eccodes `ds.close()` in
+`extract._open_run_dataset` (2.1→1.5 GB), AROME-OM 49→17 files (3-hourly),
+20-min cadence. Still CPU-bound, so **scope was trimmed**: AROME + ARPEGE
+now run **only on english-channel + fastnet** (Jack's active prep). The
+other three races dropped their `mf_*` lines (commented, not deleted).
+`mf_arpege_global` / `mf_arome_antilles` are wired + live-verified but
+fetched by no enabled config right now.
+
+To restore the full fleet: (a) uncomment the `mf_*` lines in the Med /
+Caribbean configs, and (b) give the box more CPU — a Hetzner CPX21→CPX31
+(4 vCPU / 8 GB) resize absorbs it. Cheaper alternatives if staying on 2
+vCPUs: cap ARPEGE-0.1 to ~72 h (fewer files), or cache decoded runs per
+*model* instead of per *(model,bbox)* — but that raises memory (union-crop
+of AROME ≈ whole grid), so it trades the current CPU wall for a memory one.
+Leftover `mf_arpege_global` / `mf_arome_antilles` run dirs from the failed
+passes can be cleaned from `data/` (orphaned; retention only prunes models
+still in a config).
 - Full test suite (incl. the xarray multi-step test) runs in the venv:
   `for t in tests/test_*.py; do python "$t"; done` — the sandbox can only
   run the pure-logic subset (no xarray/cfgrib there).

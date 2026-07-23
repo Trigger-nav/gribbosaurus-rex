@@ -15,8 +15,9 @@ models:
   - aifs
   - gfs
   - icon_eu
-  - mf_arome        # 2.5 km — covers Balearics / Gulf of Lion
-  - mf_arpege       # 0.1° Europe
+  # High-res AROME/ARPEGE disabled here to keep the shared 2-vCPU box within
+  # its pass budget — re-enable when Central Med is an active race (or after
+  # a box upgrade). See HANDOFF "high-res load".
 
 max_lead_hours: 96
 keep_runs: 8
