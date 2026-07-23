@@ -92,7 +92,10 @@ def _hours(max_h: int, step: int = 1, width: int = 3) -> list[tuple[int, str]]:
 AROME_RANGES = _ranges((0, 6, 12, 18, 24, 30, 36, 42, 48), width=2)
 ARPEGE_EU_RANGES = _ranges((0, 12, 24, 36, 48, 60, 72, 84, 96, 102), width=3)
 ARPEGE_GLOBAL_RANGES = _ranges((0, 24, 48, 72, 102), width=3)
-AROMEOM_HOURS = _hours(48, step=1, width=3)
+# AROME-OM is one file per échéance; 3-hourly (17 files) instead of hourly
+# (49) keeps the per-pass fetch/decode load sane on the shared box while
+# still giving Caribbean planning ample resolution.
+AROMEOM_HOURS = _hours(48, step=3, width=3)
 
 
 class MeteoFrancePackageFetcher(BaseFetcher):

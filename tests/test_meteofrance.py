@@ -49,11 +49,12 @@ def test_range_tokens():
     assert ARPEGE_EU_RANGES[1] == (24, "013H024H")
     assert ARPEGE_EU_RANGES[-1] == (102, "097H102H")
     assert len(ARPEGE_EU_RANGES) == 9
-    # AROME-OM: single 3-digit hours (\d{3}H)
+    # AROME-OM: single 3-digit hours (\d{3}H), 3-hourly to 48h (17 files)
     assert AROMEOM_HOURS[0] == (0, "000H")
-    assert AROMEOM_HOURS[6] == (6, "006H")
+    assert AROMEOM_HOURS[1] == (3, "003H")
     assert AROMEOM_HOURS[-1] == (48, "048H")
-    assert _hours(3) == [(0, "000H"), (1, "001H"), (2, "002H"), (3, "003H")]
+    assert len(AROMEOM_HOURS) == 17
+    assert _hours(6, step=3) == [(0, "000H"), (3, "003H"), (6, "006H")]
 
 
 def test_package_url():
