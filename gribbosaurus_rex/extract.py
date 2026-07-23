@@ -140,28 +140,42 @@ def _open_run_dataset(run_dir: Path, bbox=None):
 
     per_file = []
     for f in files:
-        u = v = p = None
-        for ds in cfgrib.open_datasets(str(f), backend_kwargs={"indexpath": ""}):
-            u = u if u is not None else _pick(ds.data_vars, U_NAMES)
-            v = v if v is not None else _pick(ds.data_vars, V_NAMES)
-            p = p if p is not None else _pick(ds.data_vars, P_NAMES)
-        if u is None or v is None:
-            log.warning("skipping %s: missing wind fields", f.name)
-            continue
-        pieces = {"u10": _clean_da(u), "v10": _clean_da(v)}
-        if p is not None:
-            pieces["msl"] = _clean_da(p)
-        step_ds = xr.Dataset(pieces)
+        # cfgrib/eccodes hold file handles + buffers per open; a full
+        # multi-model pass opens dozens of these and the memory creeps up
+        # (OOM risk on small boxes). Close every source dataset the moment
+        # we've .load()ed the cropped values we need out of it.
+        dsets = cfgrib.open_datasets(str(f), backend_kwargs={"indexpath": ""})
+        try:
+            u = v = p = None
+            for ds in dsets:
+                u = u if u is not None else _pick(ds.data_vars, U_NAMES)
+                v = v if v is not None else _pick(ds.data_vars, V_NAMES)
+                p = p if p is not None else _pick(ds.data_vars, P_NAMES)
+            if u is None or v is None:
+                log.warning("skipping %s: missing wind fields", f.name)
+                continue
+            pieces = {"u10": _clean_da(u), "v10": _clean_da(v)}
+            if p is not None:
+                pieces["msl"] = _clean_da(p)
+            step_ds = xr.Dataset(pieces)
 
-        # normalize longitude to [-180, 180] (GFS grids use 0..360),
-        # then crop BEFORE loading values — this is where the win is
-        step_ds = _normalize_lon(step_ds)
-        step_ds = _crop(step_ds, bbox)
+            # normalize longitude to [-180, 180] (GFS grids use 0..360),
+            # then crop BEFORE loading values — this is where the win is
+            step_ds = _normalize_lon(step_ds)
+            step_ds = _crop(step_ds, bbox)
 
-        # build the time axis — one step per file (ECMWF/GFS/ICON) or many
-        # steps per file (Météo-France packages, Met Office orders)
-        step_ds = _to_time_indexed(step_ds).load()
-        per_file.append(step_ds)
+            # build the time axis — one step per file (ECMWF/GFS/ICON) or
+            # many steps per file (Météo-France packages, Met Office orders).
+            # .load() detaches values from the source datasets so they can
+            # be closed immediately below.
+            step_ds = _to_time_indexed(step_ds).load()
+            per_file.append(step_ds)
+        finally:
+            for ds in dsets:
+                try:
+                    ds.close()
+                except Exception:  # noqa: BLE001 — best-effort handle release
+                    pass
 
     if not per_file:
         raise RuntimeError(f"No usable GRIB messages found in {run_dir}")
