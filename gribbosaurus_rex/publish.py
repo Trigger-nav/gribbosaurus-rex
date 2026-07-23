@@ -43,6 +43,14 @@ PUBLISH_NAMES = {
     "gfs": "nomads_gfs_ww3",
     "aifs": "ecmwf_aifs",
     "icon_eu": "dwd_icon_eu",
+    # High-res tier — published under their own ids. Stingray currently
+    # blends only ecmwf_ifs / nomads_gfs_ww3 and ignores models it doesn't
+    # know, so surfacing these is contract-safe (design headroom, per the
+    # contract) and lets the standalone racing tool rank them today.
+    "mf_arome": "mf_arome",
+    "mf_arpege": "mf_arpege",
+    "mf_arpege_global": "mf_arpege_global",
+    "mf_arome_antilles": "mf_arome_antilles",
 }
 
 LEAD_BUCKETS = ((0, 12), (12, 24), (24, 48))

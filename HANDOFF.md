@@ -226,29 +226,61 @@ Registry pattern means each is a fetcher module + registry entry +
 PUBLISH_NAMES entry + race-config listing. Per-race `models:` lists
 already handle domains. In priority order:
 
-1. **AROME (Météo-France, 1.3km)** — open data via the Météo-France
-   portal API, free key required (`METEOFRANCE_API_KEY` in env).
-   Regular lat-lon GRIB2 packages -> existing extractor works as-is.
-   Domain covers english-channel, most of fastnet, and central-med.
-   Publish name proposal: `mf_arome`.
-2. **ARPEGE (Météo-France)** — same key/API. 0.1° Europe + 0.25°
-   global (global covers caribbean-600). `mf_arpege`.
-3. **AROME-Antilles (2.5km)** — same key/API, overseas domain around
-   the Leewards: THE high-res model for caribbean-600. `mf_arome_antilles`.
+1. **AROME (Météo-France, 2.5 km)** — ✅ CODE-COMPLETE 2026-07-23,
+   PENDING FIRST LIVE SMOKE. `gribbosaurus_rex/fetch/meteofrance.py`,
+   registry `mf_arome`, in english-channel / fastnet / central-med.
+   See "Météo-France integration" below.
+2. **ARPEGE (Météo-France)** — ✅ same commit. `mf_arpege` (0.1° Europe,
+   in the four European races) + `mf_arpege_global` (0.25° global, the
+   only MF reach to caribbean-600).
+3. **AROME-Antilles (2.5 km)** — ✅ same commit, `mf_arome_antilles` in
+   caribbean-600. Its service/model ids are the FIRST thing the smoke
+   script confirms (overseas AROME sits under its own DPPaquet service);
+   overridable via `GRIBBO_AROMEOM_SERVICE` / `GRIBBO_AROMEOM_MODEL`.
 4. **ICON-2i (ItaliaMeteo/ARPAE, 2.2km Italy)** — via the Mistral/
-   Meteo-Hub open platform (registration). middle-sea-race's high-res.
-   Regular lat-lon. `im_icon_2i`.
-5. **UKV (Met Office DataHub, 1.5km)** — free-tier key
-   (`DATAHUB_API_KEY`). CAUTION: native Lambert azimuthal grid — the
-   extractor needs a 2D-coordinate interpolation path (extract.py
-   currently assumes 1D regular lat/lon). Budget real work. `ukmo_ukv`.
+   Meteo-Hub open platform (registration). middle-sea-race's high-res
+   (AROME France stops ~37.5°N so it misses Malta). Regular lat-lon.
+   `im_icon_2i`.
+5. **UKV (Met Office DataHub, 1.5km)** — Jack HAS the DataHub key, so this
+   is the first high-res that can go live. Order-based API (create an order
+   in the portal → poll latest → download). CAUTION: native Lambert grid —
+   extract.py now GUARDS 2D coords (`_crop` returns uncropped, and a note)
+   but still needs a real 2D-coordinate interpolation path before UKV
+   scores. Budget real work. `ukmo_ukv`. Next up after MF live-smokes.
 6. **LaMMA WRF (Tuscany)** — scope only if ICON-2i + AROME leave a
    Med gap; raw GRIB availability unconfirmed.
 
 Model-count consequences to watch: verification cost per pass grows
 linearly (fine), dashboard tiles wrap beyond ~6 models (switch to two
-rows), and STATIC_WEIGHTS priors in pipeline.py need entries for new
-models (or they get the 0.1 default until scores take over).
+rows), and STATIC_WEIGHTS priors in pipeline.py — now has entries for all
+four MF models.
+
+### Météo-France integration (2026-07-23)
+
+**Status: code-complete, offline-tested, pending first live smoke** (dev
+sandbox has no outbound network and the key isn't registered yet).
+
+- API: "Paquets Modèles" packages on `public-api.meteofrance.fr/previnum`.
+  Regular lat-lon GRIB2 but **multi-step files** (all hours in a time range
+  per file) — `extract._to_time_indexed` now assembles single- OR
+  multi-step files onto the time axis (new, general, benefits UKV too).
+- Auth: `METEOFRANCE_API_KEY` in `/etc/gribbo/env`. Scheme selectable via
+  `METEOFRANCE_AUTH` = `apikey` (default, header `apikey:`) or `bearer`.
+  The smoke script probes both and tells you which the key wants.
+- Grid volume: `mf_arome` defaults to **0.025° (2.5 km)** to keep the box
+  light; `GRIBBO_AROME_GRID=0.01` opts into 1.3 km (~4× the data — watch
+  disk with keep_runs=8). AROME caps at 48 h, ARPEGE at 102 h regardless
+  of a race's max_lead_hours.
+- **Unpinned tokens** (documented best-guess, confirmed on first smoke):
+  the `productARO/ARP` suffix, the exact `time=` range groupings, and the
+  overseas AROME service/model ids. `fetch()` SKIPS (does not fail on) a
+  404'd range, so a token mismatch = partial data, not a crash.
+- To bring live: register (see deploy/METEOFRANCE_SETUP.md), put the key in
+  `/etc/gribbo/env`, run `python scripts/live_smoke_meteofrance.py`, paste
+  the output back so any token gets corrected, then `deploy/update.sh`.
+- Full test suite (incl. the xarray multi-step test) runs in the venv:
+  `for t in tests/test_*.py; do python "$t"; done` — the sandbox can only
+  run the pure-logic subset (no xarray/cfgrib there).
 
 ## Roadmap next steps (in rough order)
 

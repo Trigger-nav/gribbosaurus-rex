@@ -20,7 +20,13 @@ log = logging.getLogger("gribbo.pipeline")
 
 # Prior weights, used until enough verification data exists to earn real
 # confidence scores (verify.blend_weights takes over automatically).
-STATIC_WEIGHTS = {"ifs": 0.35, "aifs": 0.2, "gfs": 0.25, "icon_eu": 0.2}
+STATIC_WEIGHTS = {
+    "ifs": 0.35, "aifs": 0.2, "gfs": 0.25, "icon_eu": 0.2,
+    # High-res priors: competitive but not dominant until they earn scores.
+    # These are per-race priors, renormalized over each race's model list.
+    "mf_arome": 0.3, "mf_arpege": 0.25,
+    "mf_arpege_global": 0.2, "mf_arome_antilles": 0.3,
+}
 
 
 def current_weights(cfg: RaceConfig) -> tuple[dict[str, float], str]:

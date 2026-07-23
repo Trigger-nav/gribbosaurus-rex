@@ -17,6 +17,8 @@ models:
   - aifs
   - gfs
   - icon_eu
+  - mf_arome        # 2.5 km — Solent/Channel start & Scillies (W edge ~12°W)
+  - mf_arpege       # 0.1° Europe — full course incl. Celtic Sea
 
 max_lead_hours: 144
 keep_runs: 8

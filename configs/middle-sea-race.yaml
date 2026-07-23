@@ -16,6 +16,9 @@ models:
   - aifs
   - gfs
   - icon_eu        # ICON-EU domain reaches the central Med
+  - mf_arpege      # 0.1° Europe reaches Malta/Sicily; AROME France stops
+                   # ~37.5°N so it misses Malta — ICON-2i is the high-res
+                   # here (roadmap), not AROME.
 
 max_lead_hours: 120
 keep_runs: 8

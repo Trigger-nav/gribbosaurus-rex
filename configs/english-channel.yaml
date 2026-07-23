@@ -18,6 +18,8 @@ models:
   - aifs
   - gfs
   - icon_eu
+  - mf_arome        # 2.5 km — the Channel is squarely in AROME France
+  - mf_arpege       # 0.1° Europe
 
 max_lead_hours: 72
 keep_runs: 8

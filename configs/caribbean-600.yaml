@@ -18,6 +18,8 @@ models:
   - ifs
   - aifs
   - gfs
+  - mf_arpege_global    # 0.25° global — the only MF reach to the Antilles
+  - mf_arome_antilles   # 2.5 km AROME Outre-mer — high-res for the 600
 
 max_lead_hours: 96
 keep_runs: 8

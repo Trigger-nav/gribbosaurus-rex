@@ -46,9 +46,15 @@ def _crop(ds, bbox):
     (~720k points/field) — decoding that for every step of every run
     pins the CPU for minutes. Cropping to the race area first makes the
     load ~1000x smaller. Handles ascending or descending latitude order.
+
+    Assumes 1D regular latitude/longitude coordinates. Grids with 2D
+    coordinate arrays (e.g. UKV's native Lambert projection) are not
+    handled here — those are reprojected upstream before this is called.
     """
     if bbox is None:
         return ds
+    if ds.latitude.ndim != 1 or ds.longitude.ndim != 1:
+        return ds  # 2D-coordinate grid — cropping happens elsewhere
     b = bbox.padded(0.75)
     lat_slice = (slice(b.lat_min, b.lat_max)
                  if float(ds.latitude[0]) <= float(ds.latitude[-1])
@@ -61,6 +67,56 @@ def _crop(ds, bbox):
     if out.sizes.get("latitude", 0) < 2 or out.sizes.get("longitude", 0) < 2:
         return ds
     return out
+
+
+# non-dimension coords we deliberately keep while stripping level scalars
+# (heightAboveGround, surface, number, ...) so single/multi-step assembly works
+_KEEP_COORDS = ("latitude", "longitude", "step", "valid_time", "time")
+
+
+def _clean_da(da):
+    """Strip level/ensemble scalar coords but preserve valid_time and step.
+
+    reset_coords(drop=True) would also drop valid_time (a derived, non-index
+    coordinate), which we need to build the time axis — so we drop explicitly.
+    """
+    drop = [c for c in da.coords if c not in da.dims and c != "valid_time"]
+    return da.drop_vars(drop, errors="ignore")
+
+
+def _normalize_lon(ds):
+    """Shift longitudes from 0..360 to -180..180 and re-sort (GFS grids)."""
+    if ds.longitude.ndim == 1 and float(ds.longitude.max()) > 180:
+        ds = ds.assign_coords(
+            longitude=(((ds.longitude + 180) % 360) - 180))
+        ds = ds.sortby("longitude")
+    return ds
+
+
+def _to_time_indexed(ds):
+    """Re-index a per-file dataset onto a `time` dimension from valid_time.
+
+    Handles both layouts cfgrib produces:
+      * single forecast step  -> scalar valid_time -> length-1 time axis
+      * multi-step file        -> valid_time along `step` -> full time axis
+    Météo-France "packages" and Met Office orders deliver the multi-step
+    form (many lead times per GRIB); ECMWF/GFS/ICON here are one step/file.
+    """
+    if "valid_time" not in ds.coords:
+        raise RuntimeError("dataset has no valid_time coordinate")
+    vt = ds["valid_time"]
+    if vt.ndim == 0:
+        t = pd.Timestamp(np.asarray(vt.values).item())
+        ds = ds.drop_vars([c for c in ("valid_time", "step")
+                           if c in ds.coords], errors="ignore")
+        return ds.expand_dims(time=[t])
+    # multi-step: valid_time varies along its (single) dimension, usually 'step'
+    dim = vt.dims[0]
+    ds = ds.assign_coords(
+        time=(dim, pd.to_datetime(np.asarray(vt.values))))
+    ds = ds.swap_dims({dim: "time"})
+    drop = [c for c in ("step", "valid_time") if c in ds.coords]
+    return ds.drop_vars(drop, errors="ignore")
 
 
 def _open_run_dataset(run_dir: Path, bbox=None):
@@ -82,7 +138,7 @@ def _open_run_dataset(run_dir: Path, bbox=None):
     if not files:
         raise FileNotFoundError(f"No GRIB files in {run_dir}")
 
-    per_step = []
+    per_file = []
     for f in files:
         u = v = p = None
         for ds in cfgrib.open_datasets(str(f), backend_kwargs={"indexpath": ""}):
@@ -92,29 +148,30 @@ def _open_run_dataset(run_dir: Path, bbox=None):
         if u is None or v is None:
             log.warning("skipping %s: missing wind fields", f.name)
             continue
-        pieces = {"u10": u.reset_coords(drop=True),
-                  "v10": v.reset_coords(drop=True)}
+        pieces = {"u10": _clean_da(u), "v10": _clean_da(v)}
         if p is not None:
-            pieces["msl"] = p.reset_coords(drop=True)
+            pieces["msl"] = _clean_da(p)
         step_ds = xr.Dataset(pieces)
 
         # normalize longitude to [-180, 180] (GFS grids use 0..360),
         # then crop BEFORE loading values — this is where the win is
-        if float(step_ds.longitude.max()) > 180:
-            step_ds = step_ds.assign_coords(
-                longitude=(((step_ds.longitude + 180) % 360) - 180))
-            step_ds = step_ds.sortby("longitude")
+        step_ds = _normalize_lon(step_ds)
         step_ds = _crop(step_ds, bbox)
 
-        # promote valid_time to an indexable dimension
-        vt = pd.Timestamp(np.asarray(u.valid_time.values).item())
-        step_ds = step_ds.expand_dims(time=[vt]).load()
-        per_step.append(step_ds)
+        # build the time axis — one step per file (ECMWF/GFS/ICON) or many
+        # steps per file (Météo-France packages, Met Office orders)
+        step_ds = _to_time_indexed(step_ds).load()
+        per_file.append(step_ds)
 
-    if not per_step:
+    if not per_file:
         raise RuntimeError(f"No usable GRIB messages found in {run_dir}")
 
-    return xr.concat(per_step, dim="time").sortby("time")
+    # concat, then drop any duplicate valid times (overlapping package ranges)
+    out = xr.concat(per_file, dim="time").sortby("time")
+    _, keep = np.unique(out["time"].values, return_index=True)
+    if len(keep) != out.sizes["time"]:
+        out = out.isel(time=keep)
+    return out
 
 
 @lru_cache(maxsize=8)
