@@ -257,27 +257,35 @@ four MF models.
 
 ### Météo-France integration (2026-07-23)
 
-**Status: code-complete, offline-tested, pending first live smoke** (dev
-sandbox has no outbound network and the key isn't registered yet).
+**Status: LIVE-VERIFIED 2026-07-23.** Registered on the portal, subscribed
+to AROME / ARPEGE / AROME-OM packages, generated a permanent API-Key
+credential. All four fetchers return data (HTTP 206) and an AROME package
+downloaded + decoded cleanly (u10/v10/prmsl, 7-step file). Every path
+token below is pinned against the live API, not guessed.
 
 - API: "Paquets Modèles" packages on `public-api.meteofrance.fr/previnum`.
   Regular lat-lon GRIB2 but **multi-step files** (all hours in a time range
   per file) — `extract._to_time_indexed` now assembles single- OR
   multi-step files onto the time axis (new, general, benefits UKV too).
-- Auth: `METEOFRANCE_API_KEY` in `/etc/gribbo/env`. Scheme selectable via
-  `METEOFRANCE_AUTH` = `apikey` (default, header `apikey:`) or `bearer`.
-  The smoke script probes both and tells you which the key wants.
+- Auth: portal "API Key" token type (permanent, chose 1-year validity) →
+  `METEOFRANCE_API_KEY` in `/etc/gribbo/env` with `METEOFRANCE_AUTH=apikey`
+  (confirmed: apikey header = 200, bearer = 401). The APPLICATION_ID OAuth
+  path is still supported for anyone preferring auto-refresh tokens.
 - Grid volume: `mf_arome` defaults to **0.025° (2.5 km)** to keep the box
   light; `GRIBBO_AROME_GRID=0.01` opts into 1.3 km (~4× the data — watch
   disk with keep_runs=8). AROME caps at 48 h, ARPEGE at 102 h regardless
-  of a race's max_lead_hours.
-- **Unpinned tokens** (documented best-guess, confirmed on first smoke):
-  the `productARO/ARP` suffix, the exact `time=` range groupings, and the
-  overseas AROME service/model ids. `fetch()` SKIPS (does not fail on) a
-  404'd range, so a token mismatch = partial data, not a crash.
-- To bring live: register (see deploy/METEOFRANCE_SETUP.md), put the key in
-  `/etc/gribbo/env`, run `python scripts/live_smoke_meteofrance.py`, paste
-  the output back so any token gets corrected, then `deploy/update.sh`.
+  of a race's max_lead_hours. One AROME 0.025 SP1 package ≈ 58 MB × 8
+  ranges; box has ~68 GB free so fine.
+- **Pinned tokens** (from the live API, incl. the 400 error regexes):
+  server bases `…/previnum/DPPaquet{AROME,ARPEGE,AROME-OM}/v1`; products
+  `productARO` / `productARP` / `productOMAN`; overseas model
+  `AROME-OM-ANTIL`. Package `SP1` carries P(mer)+U/V(10m). Time tokens:
+  AROME `\d{2}H\d{2}H` 6h ranges; ARPEGE 0.1 `\d{3}H\d{3}H` 12h ranges;
+  ARPEGE 0.25 `\d{3}H\d{3}H` 24h ranges; AROME-OM `\d{3}H` single hours.
+  `fetch()` skips a 400/404/500 échéance rather than failing the run.
+- Discovery tooling kept: `scripts/live_smoke_meteofrance.py` (end-to-end),
+  `scripts/mf_discover.py` + `scripts/mf_probe.py` (enumerate packages and
+  per-run time tokens — handy when Météo-France adds models/grids).
 - Full test suite (incl. the xarray multi-step test) runs in the venv:
   `for t in tests/test_*.py; do python "$t"; done` — the sandbox can only
   run the pure-logic subset (no xarray/cfgrib there).

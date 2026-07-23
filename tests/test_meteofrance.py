@@ -20,11 +20,13 @@ sys.path.insert(0, str(REPO))
 from gribbosaurus_rex.config import BBox, RaceConfig  # noqa: E402
 from gribbosaurus_rex.fetch.meteofrance import (  # noqa: E402
     AROME_RANGES,
+    AROMEOM_HOURS,
     ARPEGE_EU_RANGES,
     AromeAntillesFetcher,
     AromeFranceFetcher,
     ArpegeFetcher,
     ArpegeGlobalFetcher,
+    _hours,
     _ranges,
 )
 from gribbosaurus_rex.fetch.registry import FETCHERS, get_fetcher  # noqa: E402
@@ -37,11 +39,21 @@ def _race(bbox, models=("mf_arome",), lead=48):
 
 
 def test_range_tokens():
-    assert _ranges((0, 6, 12, 18, 24)) == [
+    # AROME: 2-digit 6-hour ranges (\d{2}H\d{2}H)
+    assert _ranges((0, 6, 12, 18, 24), width=2) == [
         (6, "00H06H"), (12, "07H12H"), (18, "13H18H"), (24, "19H24H")]
     assert AROME_RANGES[0] == (6, "00H06H")
     assert AROME_RANGES[-1] == (48, "43H48H")
-    assert ARPEGE_EU_RANGES[-1] == (102, "97H102H")
+    # ARPEGE 0.1: 3-digit 12-hour ranges (\d{3}H\d{3}H), nine windows to 102h
+    assert ARPEGE_EU_RANGES[0] == (12, "000H012H")
+    assert ARPEGE_EU_RANGES[1] == (24, "013H024H")
+    assert ARPEGE_EU_RANGES[-1] == (102, "097H102H")
+    assert len(ARPEGE_EU_RANGES) == 9
+    # AROME-OM: single 3-digit hours (\d{3}H)
+    assert AROMEOM_HOURS[0] == (0, "000H")
+    assert AROMEOM_HOURS[6] == (6, "006H")
+    assert AROMEOM_HOURS[-1] == (48, "048H")
+    assert _hours(3) == [(0, "000H"), (1, "001H"), (2, "002H"), (3, "003H")]
 
 
 def test_package_url():
@@ -52,8 +64,13 @@ def test_package_url():
     assert "referencetime=2026-07-23T00:00:00Z" in url
     assert "time=00H06H" in url and "format=grib2" in url
 
-    ua = ArpegeFetcher()._package_url(cyc, "00H12H")
+    ua = ArpegeFetcher()._package_url(cyc, "000H024H")
     assert "DPPaquetARPEGE/v1/models/ARPEGE/grids/0.1/packages/SP1/productARP" in ua
+    assert "time=000H024H" in ua
+
+    uo = AromeAntillesFetcher()._package_url(cyc, "006H")
+    assert ("DPPaquetAROME-OM/v1/models/AROME-OM-ANTIL/grids/0.025"
+            "/packages/SP1/productOMAN") in uo
 
 
 def test_auth_headers():

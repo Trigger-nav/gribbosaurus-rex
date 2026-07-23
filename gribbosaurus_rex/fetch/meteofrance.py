@@ -58,28 +58,41 @@ ROOT = "https://public-api.meteofrance.fr/previnum"
 TOKEN_URL = "https://portail-api.meteofrance.fr/token"
 
 
-def _ranges(bounds: tuple[int, ...]) -> list[tuple[int, str]]:
-    """Turn cumulative hour bounds into (range_end, "aaHbbH") tokens.
+def _ranges(bounds: tuple[int, ...], width: int = 2) -> list[tuple[int, str]]:
+    """Cumulative hour bounds -> (range_end, "aaHbbH") tokens.
 
-    e.g. bounds (0, 6, 12, 18, 24) -> [(6,"00H06H"), (12,"07H12H"),
-    (18,"13H18H"), (24,"19H24H")]. The first window is inclusive of 0;
-    subsequent windows start at previous_end + 1 (Météo-France convention).
+    e.g. bounds (0, 6, 12, 18, 24) at width 2 -> [(6,"00H06H"),
+    (12,"07H12H"), (18,"13H18H"), (24,"19H24H")]. The first window is
+    inclusive of 0; subsequent windows start at previous_end + 1
+    (Météo-France convention). `width` is the zero-pad digit count —
+    AROME uses 2 (\\d{2}H\\d{2}H), ARPEGE uses 3 (\\d{3}H\\d{3}H).
     """
     out: list[tuple[int, str]] = []
     for i in range(1, len(bounds)):
         lo = bounds[i - 1] + (1 if i > 1 else 0)
         hi = bounds[i]
-        out.append((hi, f"{lo:02d}H{hi:02d}H"))
+        out.append((hi, f"{lo:0{width}d}H{hi:0{width}d}H"))
     return out
 
 
-# Documented package time-range groupings (VERIFY on first live smoke).
-# AROME France (0.025 / 0.01): 6-hour windows to 48h.
-AROME_RANGES = _ranges((0, 6, 12, 18, 24, 30, 36, 42, 48))
-# ARPEGE Europe 0.1: 12-hour windows to 102h (last window is short).
-ARPEGE_EU_RANGES = _ranges((0, 12, 24, 36, 48, 60, 72, 84, 96, 102))
-# ARPEGE global 0.25: 24-hour windows to 102h.
-ARPEGE_GLOBAL_RANGES = _ranges((0, 24, 48, 72, 96, 102))
+def _hours(max_h: int, step: int = 1, width: int = 3) -> list[tuple[int, str]]:
+    """Single-échéance tokens, e.g. [(0,"000H"),(1,"001H"),...] — the form
+    AROME-Outre-mer requires (\\d{3}H), one forecast hour per request."""
+    return [(h, f"{h:0{width}d}H") for h in range(0, max_h + 1, step)]
+
+
+# Time tokens PINNED against the live API 2026-07-23 (the 400 error bodies
+# report the required regex per model):
+#   AROME France  -> \d{2}H\d{2}H   6-hour ranges to 48h   (00H06H …)
+#   ARPEGE 0.1    -> \d{3}H\d{3}H   12-hour ranges to 102h (000H012H …)
+#   ARPEGE 0.25   -> \d{3}H\d{3}H   24-hour ranges to 102h (000H024H …)
+#   AROME-OM      -> \d{3}H         single hours to 48h    (000H, 001H …)
+# (ARPEGE window widths enumerated live per grid — 0.1 is finer/heavier so
+#  it splits into 12h chunks; 0.25 global into 24h.)
+AROME_RANGES = _ranges((0, 6, 12, 18, 24, 30, 36, 42, 48), width=2)
+ARPEGE_EU_RANGES = _ranges((0, 12, 24, 36, 48, 60, 72, 84, 96, 102), width=3)
+ARPEGE_GLOBAL_RANGES = _ranges((0, 24, 48, 72, 102), width=3)
+AROMEOM_HOURS = _hours(48, step=1, width=3)
 
 
 class MeteoFrancePackageFetcher(BaseFetcher):
@@ -222,9 +235,10 @@ class MeteoFrancePackageFetcher(BaseFetcher):
                 n = self.download(url, out, headers=headers, timeout=300)
             except requests.HTTPError as e:
                 code = e.response.status_code if e.response is not None else "?"
-                # a missing/059 not-yet-published range shouldn't nuke the run
-                if str(code) in ("404", "500"):
-                    log.warning("%s %s: range %s unavailable (HTTP %s) — skipping",
+                # a rejected/not-yet-published échéance shouldn't nuke the run;
+                # 400 = token the API doesn't recognise for this model
+                if str(code) in ("400", "404", "500"):
+                    log.warning("%s %s: échéance %s unavailable (HTTP %s) — skipping",
                                 self.name, cycle, token, code)
                     tmp.unlink(missing_ok=True)
                     continue
@@ -297,12 +311,16 @@ class AromeAntillesFetcher(MeteoFrancePackageFetcher):
     service and the model id carries a domain suffix. Defaults below are the
     documented convention; override via env if the catalogue differs.
     """
+    # Service/model/product pinned from the live portal 2026-07-23:
+    #   base .../previnum/DPPaquetAROME-OM/v1, model AROME-OM-ANTIL,
+    #   endpoint .../packages/{package}/productOMAN. (The AROME-OM API also
+    #   serves GUYANE/INDIEN/POLYN/NCALED models we don't use.)
     name = "mf_arome_antilles"
     resolution = "2.5 km · Antilles · hourly"
-    service = os.environ.get("GRIBBO_AROMEOM_SERVICE", "DPPaquetAROMEOM")
-    model_id = os.environ.get("GRIBBO_AROMEOM_MODEL", "AROME-ANTILLES")
+    service = os.environ.get("GRIBBO_AROMEOM_SERVICE", "DPPaquetAROME-OM")
+    model_id = os.environ.get("GRIBBO_AROMEOM_MODEL", "AROME-OM-ANTIL")
     grid = "0.025"
-    product = "productAROOM"
-    ranges = AROME_RANGES
+    product = "productOMAN"
+    ranges = AROMEOM_HOURS  # single-hour tokens (\d{3}H), one step per file
     domain = dict(lat_min=11.0, lat_max=20.5, lon_min=-66.0, lon_max=-56.0)
     min_publish_lag = timedelta(hours=3, minutes=30)
