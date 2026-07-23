@@ -17,10 +17,8 @@ models:
   - aifs
   - gfs
   - icon_eu
-  # High-res AROME/ARPEGE temporarily OFF (2-vCPU box decode budget) —
-  # see HANDOFF "high-res load". Re-enable after fetch-side crop or upgrade.
-  # - mf_arome
-  # - mf_arpege
+  - mf_arome        # 2.5 km — Solent/Channel & Scillies; slimmed+cropped at fetch
+  - mf_arpege       # 0.1° Europe; slimmed+cropped at fetch
 
 max_lead_hours: 144
 keep_runs: 8

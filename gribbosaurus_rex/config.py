@@ -98,6 +98,10 @@ class RaceConfig:
     obs: ObsConfig = ObsConfig()
     scoring: ScoringConfig = ScoringConfig()
     trust: tuple[tuple[str, float], ...] = tuple(DEFAULT_TRUST.items())
+    # fleet fetch only: per-model crop bbox = union of races using that model
+    # (so a full-domain high-res download is slimmed to just its race areas,
+    # not the whole-fleet union). None outside fleet mode.
+    model_bboxes: dict | None = None
 
     def trust_for(self, source: str) -> float:
         return dict(self.trust).get(source, 0.5)
@@ -236,6 +240,11 @@ def fetch_config(races: list[RaceConfig]) -> RaceConfig:
         for m in r.models:
             if m not in models:
                 models.append(m)
+    # per-model crop bbox: union of only the races that use each model, so
+    # e.g. AROME (used by english-channel + fastnet) is cropped to the
+    # Channel/Celtic box rather than the Caribbean→Med whole-fleet union.
+    model_bboxes = {m: union_bbox([r for r in races if m in r.models])
+                    for m in models}
     return replace(
         races[0],
         name="fleet",
@@ -244,4 +253,5 @@ def fetch_config(races: list[RaceConfig]) -> RaceConfig:
         max_lead_hours=max(r.max_lead_hours for r in races),
         keep_runs=max(r.keep_runs for r in races),
         poll_minutes=min(r.poll_minutes for r in races),
+        model_bboxes=model_bboxes,
     )

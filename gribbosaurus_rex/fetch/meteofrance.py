@@ -98,6 +98,27 @@ ARPEGE_GLOBAL_RANGES = _ranges((0, 24, 48, 72, 102), width=3)
 AROMEOM_HOURS = _hours(48, step=3, width=3)
 
 
+def _mf_keep(msg_id) -> bool:
+    """Field filter for slimming: keep only 10 m wind + mean-sea-level
+    pressure messages, drop the ~12 other SP1 surface fields (2 m temp/
+    humidity, cloud, precip, radiation, fluxes…) we never score. Biased to
+    KEEP on any uncertainty — a bigger file is slow, a missing wind field
+    is broken. 10 m wind is heightAboveGround/level=10; MSL is meanSea."""
+    import eccodes as ec
+    try:
+        tol = ec.codes_get(msg_id, "typeOfLevel")
+    except Exception:  # noqa: BLE001
+        return True
+    if tol == "meanSea":
+        return True
+    if tol == "heightAboveGround":
+        try:
+            return int(ec.codes_get(msg_id, "level")) == 10
+        except Exception:  # noqa: BLE001
+            return True
+    return False
+
+
 class MeteoFrancePackageFetcher(BaseFetcher):
     """Shared machinery for the Météo-France packages API."""
 
@@ -224,9 +245,17 @@ class MeteoFrancePackageFetcher(BaseFetcher):
 
     # -- fetching -----------------------------------------------------------
 
+    def _crop_bbox(self, cfg: RaceConfig):
+        """The bbox to slim each download to: the union of races using THIS
+        model (small — e.g. the Channel), padded generously. Falls back to
+        the fetch bbox if per-model bboxes aren't available (single-race mode)."""
+        mb = getattr(cfg, "model_bboxes", None) or {}
+        return mb.get(self.name, cfg.bbox).padded(1.0)
+
     def fetch(self, cycle: datetime, cfg: RaceConfig, dest: Path) -> FetchResult:
         self._check_domain(cfg)
         headers = self._auth_headers()
+        crop_bbox = self._crop_bbox(cfg)
         files: list[Path] = []
         nbytes = 0
         for end_h, token in self._needed_ranges(cfg.max_lead_hours):
@@ -235,7 +264,7 @@ class MeteoFrancePackageFetcher(BaseFetcher):
             out.parent.mkdir(parents=True, exist_ok=True)
             tmp = out.with_suffix(".grib2.part")
             try:
-                n = self.download(url, out, headers=headers, timeout=300)
+                self.download(url, out, headers=headers, timeout=300)
             except requests.HTTPError as e:
                 code = e.response.status_code if e.response is not None else "?"
                 # a rejected/not-yet-published échéance shouldn't nuke the run;
@@ -246,8 +275,20 @@ class MeteoFrancePackageFetcher(BaseFetcher):
                     tmp.unlink(missing_ok=True)
                     continue
                 raise
+            # slim to 10m wind + MSL and crop to this model's race areas, so
+            # the downstream decode is cheap. Safe: keeps the full file on any
+            # error. This is what makes high-res viable on a small box.
+            try:
+                from gribbosaurus_rex.export import slim_crop_file
+                kept, total = slim_crop_file(out, crop_bbox, keep=_mf_keep)
+                if kept:
+                    log.info("%s %s: slimmed %d/%d msgs -> %.1f MB", self.name,
+                             token, kept, total, out.stat().st_size / 1e6)
+            except Exception:  # noqa: BLE001
+                log.warning("%s %s: slim/crop error — keeping full file",
+                            self.name, token)
             files.append(out)
-            nbytes += n
+            nbytes += out.stat().st_size
         if not files:
             raise RuntimeError(
                 f"{self.name} {cycle}: no time ranges downloaded — check the "

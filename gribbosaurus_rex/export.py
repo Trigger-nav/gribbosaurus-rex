@@ -148,6 +148,48 @@ def _crop_message(msg_id, bbox: BBox) -> bytes | None:
         return None
 
 
+def slim_crop_file(path: Path, bbox: BBox, *, keep=None) -> tuple[int, int]:
+    """Rewrite a downloaded GRIB in place: keep only messages `keep(msg_id)`
+    accepts, each cropped to `bbox` (regular_ll via _crop_message). This is
+    what makes full-domain high-res packages (Météo-France) cheap to decode
+    — an ~800k-point all-variable AROME file becomes a small few-field one.
+
+    SAFE BY DESIGN: on ANY error the original file is left exactly as-is
+    (worst case = slow, never broken). Returns (messages_written, total).
+    If nothing is kept (a too-strict `keep`), the original is preserved.
+    """
+    import eccodes as ec
+
+    tmp = path.with_suffix(path.suffix + ".slim")
+    n_total = n_written = 0
+    try:
+        with open(path, "rb") as fin, open(tmp, "wb") as fout:
+            while True:
+                msg_id = ec.codes_grib_new_from_file(fin)
+                if msg_id is None:
+                    break
+                try:
+                    n_total += 1
+                    if keep is not None and not keep(msg_id):
+                        continue
+                    cropped = _crop_message(msg_id, bbox)
+                    fout.write(cropped if cropped is not None
+                               else ec.codes_get_message(msg_id))
+                    n_written += 1
+                finally:
+                    ec.codes_release(msg_id)
+    except Exception:  # noqa: BLE001 — leave the original untouched
+        log.exception("slim_crop_file failed for %s — keeping original", path.name)
+        tmp.unlink(missing_ok=True)
+        return (0, n_total)
+
+    if n_written:
+        tmp.replace(path)          # cropped (and field-filtered) file wins
+    else:
+        tmp.unlink(missing_ok=True)  # kept nothing -> keep the original
+    return (n_written, n_total)
+
+
 def build_race_grib(cfg: RaceConfig, model: str,
                     run_store: RunStore | None = None) -> tuple[bytes, str]:
     """(grib_bytes, filename) for a model's newest run, cropped to the race.
