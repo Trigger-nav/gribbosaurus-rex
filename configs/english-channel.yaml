@@ -18,8 +18,11 @@ models:
   - aifs
   - gfs
   - icon_eu
-  - mf_arome        # 2.5 km — the Channel is squarely in AROME France
-  - mf_arpege       # 0.1° Europe
+  # High-res AROME/ARPEGE temporarily OFF — decoding the full-domain MF
+  # packages is too slow on the 2-vCPU box (see HANDOFF "high-res load").
+  # Re-enable once the fetch-side crop/slim lands or the box is upgraded.
+  # - mf_arome
+  # - mf_arpege
 
 max_lead_hours: 72
 keep_runs: 8

@@ -17,8 +17,10 @@ models:
   - aifs
   - gfs
   - icon_eu
-  - mf_arome        # 2.5 km — Solent/Channel start & Scillies (W edge ~12°W)
-  - mf_arpege       # 0.1° Europe — full course incl. Celtic Sea
+  # High-res AROME/ARPEGE temporarily OFF (2-vCPU box decode budget) —
+  # see HANDOFF "high-res load". Re-enable after fetch-side crop or upgrade.
+  # - mf_arome
+  # - mf_arpege
 
 max_lead_hours: 144
 keep_runs: 8
