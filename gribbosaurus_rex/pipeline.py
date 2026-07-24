@@ -26,6 +26,7 @@ STATIC_WEIGHTS = {
     # These are per-race priors, renormalized over each race's model list.
     "mf_arome": 0.3, "mf_arpege": 0.25,
     "mf_arpege_global": 0.2, "mf_arome_antilles": 0.3,
+    "ukmo_ukv": 0.3,
 }
 
 

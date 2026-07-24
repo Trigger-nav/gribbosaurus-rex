@@ -20,6 +20,7 @@ models:
   - icon_eu
   - mf_arome        # 2.5 km — Channel; slimmed+cropped at fetch
   - mf_arpege       # 0.1° Europe; slimmed+cropped at fetch
+  - ukmo_ukv        # Met Office 2 km UK lat-lon (order ukv-channel, to 48h)
 
 max_lead_hours: 72
 keep_runs: 8

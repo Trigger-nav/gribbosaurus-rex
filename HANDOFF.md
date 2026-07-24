@@ -241,12 +241,21 @@ already handle domains. In priority order:
    Meteo-Hub open platform (registration). middle-sea-race's high-res
    (AROME France stops ~37.5°N so it misses Malta). Regular lat-lon.
    `im_icon_2i`.
-5. **UKV (Met Office DataHub, 1.5km)** — Jack HAS the DataHub key, so this
-   is the first high-res that can go live. Order-based API (create an order
-   in the portal → poll latest → download). CAUTION: native Lambert grid —
-   extract.py now GUARDS 2D coords (`_crop` returns uncropped, and a note)
-   but still needs a real 2D-coordinate interpolation path before UKV
-   scores. Budget real work. `ukmo_ukv`. Next up after MF live-smokes.
+5. **UKV (Met Office DataHub, 2km)** — ✅ DONE 2026-07-24, `ukmo_ukv` in
+   english-channel + fastnet. Dodged the Lambert problem entirely by
+   ordering the **"UK 2km — Latitude-Longitude"** product (modelId
+   `mo-uk-latlon`) — regular lat-lon, so the whole pipeline + crop handle it
+   unchanged. Order-based API: `fetch/ukmo.py` GETs
+   `/atmospheric-models/1.0.0/orders/{orderId}/latest`, picks the newest run's
+   `agl` (10m wind u/v) file, downloads `…/{fileId}/data` (Accept
+   application/x-grib, fileId URL-encoded, follows 302s), header `apikey:
+   $DATAHUB_API_KEY`. Multi-step file (0-48h in one) → `_to_time_indexed`.
+   Wind-only (scoring is wind-based; skip MSL to stay light). Order
+   `ukv-channel` = Solent/Channel box (-6.5..2.5°E, 49..52°N), 4 runs/day,
+   0-48h, ~1.6 GB/mo (60 GB trial). `scripts/ukv_discover.py` dumps the
+   /latest shape; `scripts/live_smoke_ukv.py` end-to-end checks the fetcher.
+   NB the order covers the Channel only, so Fastnet gets UKV for the
+   Solent/start, not the W Celtic Sea (verify just returns fewer obs there).
 6. **LaMMA WRF (Tuscany)** — scope only if ICON-2i + AROME leave a
    Med gap; raw GRIB availability unconfirmed.
 

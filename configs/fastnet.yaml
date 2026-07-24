@@ -19,6 +19,8 @@ models:
   - icon_eu
   - mf_arome        # 2.5 km — Solent/Channel & Scillies; slimmed+cropped at fetch
   - mf_arpege       # 0.1° Europe; slimmed+cropped at fetch
+  - ukmo_ukv        # Met Office 2 km UK lat-lon — covers the Solent/Channel
+                    # start (order region -6.5°E..; not the W Celtic Sea)
 
 max_lead_hours: 144
 keep_runs: 8
