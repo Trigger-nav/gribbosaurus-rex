@@ -188,7 +188,18 @@ def _open_run_dataset(run_dir: Path, bbox=None):
     return out
 
 
-@lru_cache(maxsize=8)
+# Sized to hold a whole race's verification working set resident at once.
+# verify_pass loops obs -> model -> run, so within one race the distinct
+# datasets touched are (models x complete-runs-in-window): ~7 models x a
+# couple of runs each. If maxsize is smaller than that set, every single
+# observation re-decodes the heavy multi-file runs (icon_eu ~93 files,
+# gfs ~129 files) from cold — turning an O(models x runs) pass into
+# O(obs x models x runs) and blowing past the arbiter's time budget on the
+# obs-dense Channel/Fastnet races. 32 covers 7 models x ~4 runs with
+# headroom; entries are small in-memory cropped arrays (handles already
+# closed in _open_run_dataset), so the memory cost stays modest and LRU
+# evicts the previous race's datasets as the pass moves on.
+@lru_cache(maxsize=32)
 def _cached_run_dataset(run_dir: str, mtime_key: float, bbox_key):
     bbox = BBox(*bbox_key) if bbox_key else None
     return _open_run_dataset(Path(run_dir), bbox=bbox)
