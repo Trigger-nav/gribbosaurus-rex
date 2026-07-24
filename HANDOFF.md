@@ -313,6 +313,21 @@ of AROME ≈ whole grid), so it trades the current CPU wall for a memory one.
 Leftover `mf_arpege_global` / `mf_arome_antilles` run dirs from the failed
 passes can be cleaned from `data/` (orphaned; retention only prunes models
 still in a config).
+
+**RESOLVED 2026-07-24 — fetch-side crop for the whole fleet.** The real cost
+was decoding full-domain files per-race every pass (ICON-EU alone = 93
+full-Europe files/run). Fix: `BaseFetcher.slim_fetched` + `crop_on_fetch`
+crop every download to that model's race-area bbox (`model_crop_bbox`, the
+union of races using it) using the proven `export.slim_crop_file`. Live
+results: `ifs` 106→7 MB (14×), `aifs` 50→3 MB (15×), `icon_eu` 309→60 MB
+(5×); a full base-fleet pass went from 43 min CPU (timeout) to **1 min 42 s
+CPU / 6.5 min wall, published 45 entries**. `gfs` is already server-subset
+(`region_subset`), so it's left uncropped. Météo-France keeps its own
+inline slim+crop (field filter + crop). After a deploy that changes cropping,
+old uncropped runs linger until replaced — to force it: stop the arbiter,
+`rm -rf data/grib/*`, `DELETE FROM runs` (keeps obs/verif/score history),
+restart. `scripts/crop_bench.py` validates the crop offline. With this in,
+AROME/ARPEGE are back on for english-channel + fastnet.
 - Full test suite (incl. the xarray multi-step test) runs in the venv:
   `for t in tests/test_*.py; do python "$t"; done` — the sandbox can only
   run the pure-logic subset (no xarray/cfgrib there).
