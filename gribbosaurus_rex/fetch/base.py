@@ -57,6 +57,16 @@ class FetchResult:
     nbytes: int
 
 
+def model_crop_bbox(name: str, cfg, pad: float = 1.0):
+    """Per-model crop bbox = union of the races that use this model (from the
+    fleet fetch config), padded. Falls back to the fetch bbox, or None if
+    neither is available. Used to slim full-domain downloads to just the race
+    areas at fetch time so the per-race decode later is cheap."""
+    mb = getattr(cfg, "model_bboxes", None) or {}
+    bb = mb.get(name, getattr(cfg, "bbox", None))
+    return bb.padded(pad) if bb is not None else None
+
+
 class BaseFetcher(abc.ABC):
     #: registry key, e.g. "ifs"
     name: str = "?"
@@ -67,6 +77,9 @@ class BaseFetcher(abc.ABC):
     #: True when downloads are bbox-subset server-side (files on disk only
     #: cover the fetch domain) — such runs refetch when the domain grows
     region_subset: bool = False
+    #: full-domain downloads get slimmed + cropped to the race areas at fetch
+    #: (regular_ll only; huge decode saving for e.g. ICON-EU's 93 files/run)
+    crop_on_fetch: bool = False
     #: hours of the day at which cycles run
     cycle_hours: tuple[int, ...] = (0, 6, 12, 18)
     #: rough minimum delay between cycle time and publication (probe filter)
@@ -158,3 +171,39 @@ class BaseFetcher(abc.ABC):
             return r.status_code in (200, 206)
         except requests.RequestException:
             return False
+
+    # -- fetch-side slim + crop ----------------------------------------------
+
+    def _crop_keep(self):
+        """Optional field filter (eccodes msg_id -> bool) for the fetch crop.
+        None keeps every message; override to drop unused fields (e.g. the
+        Météo-France packages keep only 10 m wind + MSL)."""
+        return None
+
+    def slim_fetched(self, files: list[Path], cfg) -> int:
+        """Crop each fetched file to this model's race-area bbox (regular_ll),
+        applying `_crop_keep`. Big decode saving for full-domain models.
+
+        No-op unless `crop_on_fetch` is set and a per-model bbox is available.
+        Safe: `slim_crop_file` keeps the original file on any error, so a crop
+        problem degrades to "slower", never "broken". Returns bytes on disk
+        after cropping (so callers can report an honest size)."""
+        total = 0
+        if not self.crop_on_fetch:
+            return sum(f.stat().st_size for f in files)
+        bbox = model_crop_bbox(self.name, cfg)
+        if bbox is None:
+            return sum(f.stat().st_size for f in files)
+        from gribbosaurus_rex.export import slim_crop_file
+        keep = self._crop_keep()
+        before = sum(f.stat().st_size for f in files)
+        for f in files:
+            try:
+                slim_crop_file(f, bbox, keep=keep)
+            except Exception:  # noqa: BLE001
+                log.warning("crop failed for %s — keeping full file", f.name)
+            total += f.stat().st_size
+        if before:
+            log.info("%s: cropped %d files %.1f -> %.1f MB", self.name,
+                     len(files), before / 1e6, total / 1e6)
+        return total

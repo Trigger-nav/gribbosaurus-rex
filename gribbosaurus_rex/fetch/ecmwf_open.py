@@ -35,6 +35,7 @@ class EcmwfOpenFetcher(BaseFetcher):
     name = "ifs"
     product = "ifs"
     resolution = "0.25° · global · physics"
+    crop_on_fetch = True  # global 0.25° messages -> crop to the race areas
     min_publish_lag = timedelta(hours=6, minutes=30)
 
     def stream(self, cycle: datetime) -> str:
@@ -120,6 +121,8 @@ class EcmwfOpenFetcher(BaseFetcher):
                     nbytes += len(r.content)
             tmp.rename(out)
             files.append(out)
+        # crop the global messages to the race areas -> cheap decode later
+        nbytes = self.slim_fetched(files, cfg)
         log.info("%s %s: %d files, %.1f MB", self.name, cycle, len(files), nbytes / 1e6)
         return FetchResult(files=files, nbytes=nbytes)
 

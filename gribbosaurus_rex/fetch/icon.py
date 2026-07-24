@@ -34,6 +34,7 @@ class IconEuFetcher(BaseFetcher):
     name = "icon_eu"
     resolution = "0.0625° · Europe · hourly steps"
     domain = DOMAIN
+    crop_on_fetch = True  # 93 full-Europe files/run -> crop to the race areas
     min_publish_lag = timedelta(hours=2, minutes=30)
 
     def steps(self, max_lead_hours: int) -> list[int]:
@@ -86,5 +87,7 @@ class IconEuFetcher(BaseFetcher):
                     nbytes += len(data)
             tmp.rename(out)
             files.append(out)
+        # crop the full-Europe files to the race areas -> cheap decode later
+        nbytes = self.slim_fetched(files, cfg)
         log.info("icon_eu %s: %d files, %.1f MB", cycle, len(files), nbytes / 1e6)
         return FetchResult(files=files, nbytes=nbytes)
