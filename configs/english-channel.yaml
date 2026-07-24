@@ -18,8 +18,12 @@ models:
   - aifs
   - gfs
   - icon_eu
-  - mf_arome        # 2.5 km — Channel; slimmed+cropped at fetch (cheap decode)
-  - mf_arpege       # 0.1° Europe; slimmed+cropped at fetch
+  # High-res OFF pending the verify optimisation (decode-once + obs thinning).
+  # The fetch-side slim+crop works (12x smaller files), but the arbiter is
+  # single-threaded and re-decodes every model each pass, which overruns the
+  # timeout on this box. Re-enable after the optimisation. See HANDOFF.
+  # - mf_arome
+  # - mf_arpege
 
 max_lead_hours: 72
 keep_runs: 8

@@ -17,8 +17,11 @@ models:
   - aifs
   - gfs
   - icon_eu
-  - mf_arome        # 2.5 km — Solent/Channel & Scillies; slimmed+cropped at fetch
-  - mf_arpege       # 0.1° Europe; slimmed+cropped at fetch
+  # High-res OFF pending the verify optimisation (see english-channel.yaml
+  # and HANDOFF "high-res load"). fetch-side slim+crop is done; the arbiter
+  # decode path is the remaining bottleneck. Re-enable after that lands.
+  # - mf_arome
+  # - mf_arpege
 
 max_lead_hours: 144
 keep_runs: 8
