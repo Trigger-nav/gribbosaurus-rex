@@ -341,6 +341,52 @@ AROME/ARPEGE are back on for english-channel + fastnet.
   `for t in tests/test_*.py; do python "$t"; done` — the sandbox can only
   run the pure-logic subset (no xarray/cfgrib there).
 
+### RESOLVED 2026-07-28 — run-major vectorized verification (the real wall)
+
+The timeouts came back the moment the 7-model races (Channel/Fastnet with
+`mf_*` + `ukmo_ukv`) had fresh runs: every pass died at the 45-min systemd
+kill (~42 min CPU), scores.json froze, and the three obs-heavy races
+(english-channel, fastnet, middle-sea-race) stopped scoring — which
+surfaced as "UKV has no confidence score" but was actually system-wide.
+Fetch-side crop had fixed *decode size*, not *decode count*.
+
+Root cause (profiled on the box — `scripts/profile_pass.py`): the old
+`verify_pass` looped **obs-major** (`for ob: for model: for run:`) over
+~4-5k window obs × 7 models × 8 kept runs ≈ **230k candidate pairs** per
+race per pass. That did (a) one `has_verification` sqlite point-query per
+pair, (b) one scalar `ds.interp` per pair, and (c) cycled 56 datasets
+through the LRU dataset cache in its worst-case (cyclic) pattern, so
+nearly every access re-decoded a multi-file GRIB. Raising the cache 8→32
+(commit 9c2fde7) did nothing — no reasonable cache survives cyclic access
+over a 56-item working set.
+
+Fix (commit 6991479): `verify_pass` is now **run-major + vectorized** —
+`for model: for run:` gather every obs still needing verification, then
+ONE `ds.interp` with DataArray point-lists, one `verified_obs_ids()` set
+query per run (new `idx_verif_model_cycle` index), one `executemany`
+batch insert per run, and a cheap `Path(rec.path).is_dir()` guard that
+skips DB-"complete" runs whose dirs were pruned (these previously raised
++ logged a traceback *per obs*). Errors log once per run, not per obs.
+Measured: verify+score for english-channel went from **hours (never
+finished under cProfile) to 306 s under cProfile including a 123k-row
+backlog**; the first full arbiter pass after deploy cleared 14,361
+verifications across the fleet and published 73 entries in 22 min wall;
+steady-state passes are minutes. Remaining profile time is pure cfgrib
+decode of the ≤56 datasets — irreducible without decode caching across
+passes.
+
+**DO NOT revert the loop to obs-major** — the shape is load-bearing; the
+module docstring in `verify.py` says the same. Offline tests:
+`tests/test_verify_batch.py` (row assembly, NaN handling, batch store
+methods). If passes creep toward the 20-min timer again, next levers:
+lower `keep_runs` (8 runs/model × 7 models is the decode bill), or
+persist decoded runs (e.g. zarr/netcdf next to the GRIB) so a pass
+decodes each run once ever instead of once per pass.
+
+With this in, `ukmo_ukv` scores live in both its races (first published
+2026-07-28: Channel 0.52/0.49/0.46, Fastnet 0.51/0.50/0.49 by lead band)
+and the public feed carries all seven models.
+
 ## Roadmap next steps (in rough order)
 
 1. ~~Cleanup + guard~~ Done 2026-07-13: smoke loopback writes
