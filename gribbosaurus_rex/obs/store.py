@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS verification (
     UNIQUE (obs_id, model, cycle)
 );
 CREATE INDEX IF NOT EXISTS idx_verif_model ON verification (model, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_verif_model_cycle ON verification (model, cycle);
 
 CREATE TABLE IF NOT EXISTS scores (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -151,6 +152,36 @@ class ObsStore:
         return Obs.from_row(row) if row else None
 
     # -- verification -----------------------------------------------------
+
+    def verified_obs_ids(self, model: str, cycle: str) -> set[int]:
+        """All obs ids already verified against one model run (one query —
+        the batch replacement for per-pair has_verification lookups)."""
+        rows = self._conn.execute(
+            "SELECT obs_id FROM verification WHERE model=? AND cycle=?",
+            (model, cycle)).fetchall()
+        return {r["obs_id"] for r in rows}
+
+    def insert_verifications(self, rows: list[tuple]) -> int:
+        """Batch-insert verification rows; one commit. Returns rows added.
+
+        Row layout (matches insert_verification's column order):
+        (obs_id, model, cycle, lead_hours, fc_wind_speed, fc_wind_dir,
+         fc_pressure, err_vector_ms, err_speed_ms, err_dir_deg,
+         err_press_hpa)
+        """
+        if not rows:
+            return 0
+        now = _now()
+        before = self._conn.total_changes
+        self._conn.executemany(
+            """INSERT OR IGNORE INTO verification
+               (obs_id, model, cycle, lead_hours, fc_wind_speed, fc_wind_dir,
+                fc_pressure, err_vector_ms, err_speed_ms, err_dir_deg,
+                err_press_hpa, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            [(*r, now) for r in rows])
+        self._conn.commit()
+        return self._conn.total_changes - before
 
     def has_verification(self, obs_id: int, model: str, cycle: str) -> bool:
         row = self._conn.execute(

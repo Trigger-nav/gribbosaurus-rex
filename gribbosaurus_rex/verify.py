@@ -14,6 +14,18 @@ One verification pass:
 Confidence mapping: score = exp(-weighted_rmse_vector / err_scale_kn),
 so 0kn error -> 1.0, err_scale_kn -> 0.37, and scores are comparable
 across models because every model is judged on the same obs set.
+
+PERFORMANCE — the loop MUST stay run-major (model -> run -> all obs at
+once). The obvious obs-major loop (for ob: for model: for run:) is
+catastrophically slow at fleet scale and took the arbiter from ~2 min to
+45-min systemd kills: with ~4-5k obs in the window and 7 models x 8 runs
+(= 56 datasets, more than any sane cache holds) it (a) cycles the dataset
+cache in LRU's worst-case pattern so nearly every access re-decodes a
+multi-file GRIB, (b) issues one has_verification point-query per
+(obs, model, run) ~= hundreds of thousands per race, and (c) does one
+scalar xarray interp per pair. Run-major does <=56 dataset opens, one
+verified-set query per run, and ONE vectorized interp per run. Profiled
+on the prod box 2026-07-28; see scripts/profile_pass.py.
 """
 
 from __future__ import annotations
@@ -21,6 +33,7 @@ from __future__ import annotations
 import logging
 import math
 from datetime import datetime, timezone
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -28,6 +41,7 @@ import pandas as pd
 from gribbosaurus_rex.config import RaceConfig
 from gribbosaurus_rex.core.scoring import (direction_error, distance_weight,
                                            wind_vector_error)
+from gribbosaurus_rex.core.wind import to_speed_dir
 from gribbosaurus_rex.obs.store import Obs, ObsStore
 from gribbosaurus_rex.store.runs import RunStore
 
@@ -50,68 +64,113 @@ def _half_life_weight(x: float, half: float) -> float:
 
 # ------------------------------------------------------------- verification
 
+def _naive_utc(iso: str) -> np.datetime64:
+    """ISO8601 (naive or tz-aware) -> tz-naive UTC numpy datetime64."""
+    ts = pd.Timestamp(iso)
+    if ts.tzinfo is not None:
+        ts = ts.tz_convert("UTC").tz_localize(None)
+    return np.datetime64(ts)
+
+
+def _build_rows(sub: list[Obs], model: str, cycle: str, lead_h: np.ndarray,
+                fc_speed: np.ndarray, fc_dir: np.ndarray,
+                fc_press: np.ndarray) -> list[tuple]:
+    """Assemble insert_verifications() rows from vectorized forecast arrays.
+
+    Pure numpy/python (no xarray) so it's unit-testable offline. Skips
+    points where the forecast is NaN (obs outside the grid, or a valid
+    time past the run's last step). NaN errors -> None columns, matching
+    the old scalar path.
+    """
+    ob_speed = np.array([o.wind_speed_ms for o in sub], dtype=float)
+    ob_dir = np.array([o.wind_dir_deg if o.wind_dir_deg is not None
+                       else np.nan for o in sub], dtype=float)
+    ob_press = np.array([o.pressure_hpa if o.pressure_hpa is not None
+                         else np.nan for o in sub], dtype=float)
+
+    with np.errstate(invalid="ignore"):
+        err_vec = wind_vector_error(fc_speed, fc_dir, ob_speed, ob_dir)
+        err_dir = direction_error(fc_dir, ob_dir)
+        err_spd = fc_speed - ob_speed
+        err_prs = fc_press - ob_press
+
+    def _opt(x: float, nd: int | None = None) -> float | None:
+        if np.isnan(x):
+            return None
+        return round(float(x), nd) if nd is not None else float(x)
+
+    rows = []
+    for k, o in enumerate(sub):
+        if np.isnan(fc_speed[k]):
+            continue
+        rows.append((o.id, model, cycle, round(float(lead_h[k]), 2),
+                     round(float(fc_speed[k]), 3), round(float(fc_dir[k]), 1),
+                     _opt(fc_press[k], 1), _opt(err_vec[k]),
+                     float(err_spd[k]), _opt(err_dir[k]), _opt(err_prs[k])))
+    return rows
+
+
 def verify_pass(cfg: RaceConfig, run_store: RunStore, obs_store: ObsStore) -> int:
-    """Verify window obs against all covering runs. Returns rows added."""
-    from gribbosaurus_rex.extract import value_at
+    """Verify window obs against all covering runs. Returns rows added.
+
+    Run-major + vectorized — see the module docstring for why this shape
+    is load-bearing. Do not revert to a per-observation loop.
+    """
+    import xarray as xr
+
+    from gribbosaurus_rex.extract import open_run
+
+    observations = obs_store.recent_obs(cfg.scoring.window_h)
+    box = cfg.bbox.padded(0.5)
+    cand = [ob for ob in observations
+            if ob.source != "test"            # smoke/loopback: never scored
+            and ob.wind_speed_ms is not None
+            and box.contains(ob.lat, ob.lon)]
+    if not cand:
+        return 0
+    obs_times = np.array([_naive_utc(ob.time) for ob in cand])
 
     added = 0
-    observations = obs_store.recent_obs(cfg.scoring.window_h)
-    if not observations:
-        return 0
-
-    runs_by_model = {m: [r for r in run_store.list_runs(model=m, limit=cfg.keep_runs * 2)
-                         if r.status == "complete"]
-                     for m in cfg.models}
-
-    for ob in observations:
-        if ob.source == "test":
-            continue  # smoke/loopback data: stored, never scored
-        if ob.wind_speed_ms is None:
-            continue
-        if not cfg.bbox.padded(0.5).contains(ob.lat, ob.lon):
-            continue
-        t_obs = datetime.fromisoformat(ob.time)
-
-        for model, runs in runs_by_model.items():
-            for rec in runs:
-                t_cycle = datetime.fromisoformat(rec.cycle)
-                lead_h = (t_obs - t_cycle).total_seconds() / 3600.0
-                if lead_h < 0 or lead_h > cfg.max_lead_hours:
-                    continue
-                if obs_store.has_verification(ob.id, model, rec.cycle):
-                    continue
-                try:
-                    fc = value_at(rec, ob.lat, ob.lon,
-                                  pd.Timestamp(t_obs).tz_convert("UTC"),
-                                  bbox=cfg.bbox)
-                except Exception:  # noqa: BLE001
-                    log.exception("value_at failed: %s %s", model, rec.cycle)
-                    continue
-                if fc["wind_speed_ms"] is None or np.isnan(fc["wind_speed_ms"]):
-                    continue
-
-                err_vec = err_dir = None
-                if ob.wind_dir_deg is not None:
-                    err_vec = float(wind_vector_error(
-                        fc["wind_speed_ms"], fc["wind_dir"],
-                        ob.wind_speed_ms, ob.wind_dir_deg))
-                    err_dir = float(direction_error(fc["wind_dir"],
-                                                    ob.wind_dir_deg))
-                err_spd = float(fc["wind_speed_ms"] - ob.wind_speed_ms)
-                err_prs = None
-                if ob.pressure_hpa is not None and not np.isnan(fc["pressure"]):
-                    err_prs = float(fc["pressure"] - ob.pressure_hpa)
-
-                obs_store.insert_verification(
-                    obs_id=ob.id, model=model, cycle=rec.cycle,
-                    lead_hours=round(lead_h, 2),
-                    fc_wind_speed=round(fc["wind_speed_ms"], 3),
-                    fc_wind_dir=round(fc["wind_dir"], 1),
-                    fc_pressure=(None if np.isnan(fc["pressure"])
-                                 else round(fc["pressure"], 1)),
-                    err_vector_ms=err_vec, err_speed_ms=err_spd,
-                    err_dir_deg=err_dir, err_press_hpa=err_prs)
-                added += 1
+    for model in cfg.models:
+        runs = run_store.list_runs(model=model, limit=cfg.keep_runs * 2)
+        for rec in runs:
+            if rec.status != "complete":
+                continue
+            if not Path(rec.path).is_dir():
+                # pruned from disk but still 'complete' in the DB — skip
+                # cheaply here rather than exploding per-obs downstream
+                log.debug("skipping pruned run %s %s", model, rec.cycle)
+                continue
+            lead_h = ((obs_times - _naive_utc(rec.cycle))
+                      / np.timedelta64(1, "h")).astype(float)
+            mask = (lead_h >= 0.0) & (lead_h <= cfg.max_lead_hours)
+            if not mask.any():
+                continue
+            done = obs_store.verified_obs_ids(model, rec.cycle)
+            idx = [int(i) for i in np.nonzero(mask)[0] if cand[i].id not in done]
+            if not idx:
+                continue
+            sub = [cand[i] for i in idx]
+            try:
+                ds = open_run(rec, bbox=cfg.bbox)
+                pt = ds.interp(
+                    latitude=xr.DataArray([o.lat for o in sub], dims="pt"),
+                    longitude=xr.DataArray([o.lon for o in sub], dims="pt"),
+                    time=xr.DataArray(obs_times[idx], dims="pt"),
+                    method="linear")
+                fc_u = np.asarray(pt["u10"].values, dtype=float)
+                fc_v = np.asarray(pt["v10"].values, dtype=float)
+                fc_press = (np.asarray(pt["msl"].values, dtype=float) / 100.0
+                            if "msl" in pt else np.full(len(sub), np.nan))
+            except Exception:  # noqa: BLE001 — once per run, not per obs
+                log.exception("verification interp failed: %s %s",
+                              model, rec.cycle)
+                continue
+            fc_speed, fc_dir = to_speed_dir(fc_u, fc_v)
+            rows = _build_rows(sub, model, rec.cycle, lead_h[idx],
+                               np.asarray(fc_speed, dtype=float),
+                               np.asarray(fc_dir, dtype=float), fc_press)
+            added += obs_store.insert_verifications(rows)
 
     if added:
         log.info("verification: %d new forecast-vs-obs comparisons", added)
