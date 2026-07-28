@@ -164,6 +164,44 @@ def obs(window_h: float = 24, source: str | None = None):
     return [vars(o) for o in store.recent_obs(window_h, source=source)]
 
 
+@app.post("/obs/yacht")
+async def obs_yacht(request: Request):
+    """Authenticated yacht-obs push (the live boat feed).
+
+    Boat side: scripts/stingray_sender.py on the Expedition PC. Auth is a
+    shared token in X-Gribbo-Token, set as GRIBBO_YACHT_TOKEN in
+    /etc/gribbo/env — the endpoint returns 503 until one is configured.
+    Duplicate (station, time) rows are ignored, so the sender can retry
+    its whole queue after a 4G dropout without double-counting.
+    """
+    from gribbosaurus_rex.obs import yacht_push
+
+    if not yacht_push.token_configured():
+        raise HTTPException(503, "yacht push not enabled on this server "
+                                 "(GRIBBO_YACHT_TOKEN unset)")
+    if not yacht_push.token_ok(request.headers.get("X-Gribbo-Token")):
+        raise HTTPException(401, "bad or missing X-Gribbo-Token")
+    try:
+        payload = await request.json()
+    except Exception as e:  # noqa: BLE001 — malformed body
+        raise HTTPException(422, f"invalid JSON body: {e}") from e
+    try:
+        station, rows, rejected = yacht_push.parse_payload(payload)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+
+    store = ObsStore(fleet_cfg.db_path)
+    accepted = duplicates = 0
+    for row in rows:
+        if store.insert_obs(source="yacht", station=station, **row):
+            accepted += 1
+        else:
+            duplicates += 1
+    return {"station": station, "accepted": accepted,
+            "duplicates": duplicates, "rejected": rejected[:20],
+            "n_rejected": len(rejected)}
+
+
 @app.get("/scores")
 def scores(race: str | None = None):
     from gribbosaurus_rex.pipeline import current_weights
