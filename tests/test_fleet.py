@@ -31,10 +31,16 @@ def test_repo_fleet_loads():
     fleet = load_fleet(REPO / "configs")
     names = {r.name for r in fleet}
     assert names == {"central-med", "english-channel", "fastnet",
-                     "middle-sea-race", "caribbean-600"}
+                     "middle-sea-race", "caribbean-600", "solent"}
     channel = next(r for r in fleet if r.name == "english-channel")
     assert channel.bbox.contains(50.76, -1.30)          # Cowes
     assert channel.bbox.contains(49.65, -1.62)          # Cherbourg
+    solent = next(r for r in fleet if r.name == "solent")
+    assert solent.bbox.contains(50.724, -1.742)         # Highcliffe SC (Ch. Bay)
+    assert solent.bbox.contains(50.575, -1.298)         # St Catherine's Point
+    assert solent.bbox.contains(50.668, -0.953)         # Nab Tower
+    assert not solent.bbox.contains(49.65, -1.62)       # Cherbourg NOT in it
+    assert "ukmo_ukv" in solent.models and "mf_arome" in solent.models
     fastnet = next(r for r in fleet if r.name == "fastnet")
     assert fastnet.bbox.contains(51.39, -9.60)          # Fastnet Rock
     assert fastnet.max_lead_hours == 144

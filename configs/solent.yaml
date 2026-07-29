@@ -1,0 +1,72 @@
+# Solent — tight day-racing area around the Isle of Wight: the Solent
+# proper, Christchurch Bay to the west, the eastern approaches to Selsey,
+# and the sea room south of the island (St Catherine's). Subset of the
+# english-channel area, scored separately so the high-res models
+# (AROME 2.5 km, UKV 2 km) are judged at round-the-cans scale with a
+# much tighter distance weighting.
+#
+# (This filename previously held the disabled 'solent-retired' tombstone
+# from the 2026-07-14 rename to english-channel; reused 2026-07-29.)
+#
+# Obs coverage inside this box (live-audited 2026-07-29 via windycator):
+# Bramble Post, Calshot, Gurnard SC, Hurst Castle, Stokes Bay SC,
+# Hill Head SC, NCI Gosport/Lee/Stone Point, Hayling; Christchurch Bay:
+# Highcliffe SC; south/east of the Wight: Sandown Pier, Nab Tower.
+# METAR adds EGHH Bournemouth + EGHI Southampton (bbox-driven).
+# NB nothing fixed reports from the Wight's true south coast
+# (Ventnor/St Catherine's) — the yacht feed covers that water.
+
+name: solent
+description: Solent, Christchurch Bay and south of the Isle of Wight
+enabled: true
+
+bbox:
+  lat_min: 50.45      # sea room south of St Catherine's (50.575)
+  lat_max: 50.95      # Southampton Water head
+  lon_min: -2.05      # Christchurch/Poole Bay (incl. EGHH Bournemouth)
+  lon_max: -0.70      # Selsey Bill / eastern approaches (incl. Nab)
+
+models:
+  - ifs
+  - aifs
+  - gfs
+  - icon_eu
+  - mf_arome        # 2.5 km — the model this area exists to test
+  - mf_arpege       # 0.1° Europe
+  - ukmo_ukv        # Met Office 2 km — home turf, order covers fully
+
+max_lead_hours: 48    # day-racing horizon (also UKV's order cap)
+keep_runs: 8
+data_dir: data
+poll_minutes: 10
+
+observations:
+  metar: true
+  windycator: true          # all stations inside the bbox, auto-filtered
+  # No GTS buoys close enough to matter: the Channel lightvessels sit
+  # outside even the padded box (english-channel fetches them already,
+  # and obs are shared storage — nothing extra to fetch here).
+  ndbc_stations: []
+  openmeteo: false
+  focus: {lat: 50.79, lon: -1.29}   # Bramble Bank — mid-Solent
+  nmea:
+    enabled: false    # the english-channel config owns the UDP listener;
+    transport: udp    # yacht obs land in shared storage and score here
+    port: 10110       # automatically when the boat is inside this bbox.
+
+trust:
+  yacht: 1.0
+  metar: 0.85
+  ndbc: 0.9
+  windycator: 0.8
+  openmeteo: 0.4
+
+scoring:
+  window_h: 48
+  half_weight_nm: 12       # round-the-cans scale: Cowes->Hurst is ~10 nm,
+                           # so a Christchurch Bay ob counts ~1/2 from the
+                           # Bramble (english-channel uses 30)
+  lead_half_h: 18          # bias toward short-range skill
+  recency_half_h: 12
+  err_scale_ms: 2.5
+  publish_window_h: 24
