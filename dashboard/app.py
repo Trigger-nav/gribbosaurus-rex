@@ -312,8 +312,39 @@ for col, mdl in zip(dl_cols, race_cfg["models"]):
 # ------------------------------------------------------------- blended grid
 st.header("Blended grid")
 
+# user-configurable blend: sliders override the earned weights for THIS
+# view only — the published scores.json / Stingray feed is untouched.
+_auto_w = sc.get("blend_weights", {}) if sc else {}
+_mode = st.radio("Blend weights", ["Auto (confidence)", "Manual"],
+                 horizontal=True,
+                 help="Auto uses weights earned from observation "
+                      "verification. Manual lets you set the mix yourself "
+                      "— e.g. all-AROME, or a 50/50 UKV/IFS blend.")
+_weights_param = None
+if _mode == "Manual":
+    _sliders = {}
+    _scols = st.columns(min(len(race_cfg["models"]), 4))
+    for i, m in enumerate(race_cfg["models"]):
+        default = int(round(_auto_w.get(m, 1.0 / len(race_cfg["models"])) * 100))
+        with _scols[i % len(_scols)]:
+            _sliders[m] = st.slider(m.upper(), 0, 100, default,
+                                    key=f"w_{race}_{m}")
+    _tot = sum(_sliders.values())
+    if _tot <= 0:
+        st.warning("At least one model needs a weight above zero.")
+    else:
+        st.caption("Normalized mix: " + "  ·  ".join(
+            f"{m.upper()} {v / _tot:.0%}"
+            for m, v in sorted(_sliders.items(), key=lambda kv: -kv[1])
+            if v > 0))
+        import json as _json
+        _weights_param = _json.dumps(_sliders)
+
 if st.button("Run blended field"):
-    data = api("/grid", race=race)
+    if _mode == "Manual" and _weights_param is None:
+        st.error("Set at least one model weight above zero.")
+        st.stop()
+    data = api("/grid", race=race, weights=_weights_param)
     df = pd.DataFrame(data)
     df["speed_kn"] = df["speed_ms"] * MS_TO_KN
     df["uncertainty_kn"] = df["uncertainty_ms"] * MS_TO_KN

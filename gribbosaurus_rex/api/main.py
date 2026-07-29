@@ -148,11 +148,27 @@ def point(lat: float = Query(...), lon: float = Query(...),
 
 
 @app.get("/grid")
-def grid(valid_time: str | None = None, race: str | None = None):
+def grid(valid_time: str | None = None, race: str | None = None,
+         weights: str | None = None):
+    """Blended wind field. `weights` (optional) is a JSON object of
+    {model: weight} for a per-request manual blend, e.g.
+    ?weights={"mf_arome":60,"ukmo_ukv":40} — any scale, normalized
+    server-side. Never affects the published feed or stored scores."""
+    import json
+
     from gribbosaurus_rex.pipeline import run as run_pipeline
 
+    override = None
+    if weights:
+        try:
+            override = json.loads(weights)
+        except json.JSONDecodeError as e:
+            raise HTTPException(422, f"weights is not valid JSON: {e}") from e
     try:
-        df = run_pipeline(resolve_race(race), valid_time=valid_time)
+        df = run_pipeline(resolve_race(race), valid_time=valid_time,
+                          weights_override=override)
+    except ValueError as e:               # bad override
+        raise HTTPException(422, str(e)) from e
     except RuntimeError as e:
         raise HTTPException(503, str(e)) from e
     return df.to_dict(orient="records")

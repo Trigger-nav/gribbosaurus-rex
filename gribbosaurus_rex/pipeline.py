@@ -47,18 +47,55 @@ def current_weights(cfg: RaceConfig) -> tuple[dict[str, float], str]:
             "prior")
 
 
+def resolve_weights(cfg: RaceConfig, override: dict | None = None
+                    ) -> tuple[dict[str, float], str]:
+    """Blend weights for a run: a user override if given, else earned/prior.
+
+    The override (dashboard sliders, or any API caller passing ?weights=)
+    is filtered to the race's models, must contain at least one positive
+    finite value, and is normalized here. Invalid overrides raise
+    ValueError so the API can 422 rather than silently blending wrong.
+    Manual weights are per-request only — they never touch the published
+    scores.json or the stored confidence history.
+    """
+    if override is None:
+        return current_weights(cfg)
+    if not isinstance(override, dict):
+        raise ValueError("weights must be an object of {model: number}")
+    usable = {}
+    for m, v in override.items():
+        if m not in cfg.models:
+            continue           # unknown/other-race models are ignored
+        try:
+            x = float(v)
+        except (TypeError, ValueError):
+            raise ValueError(f"weight for {m!r} is not a number: {v!r}")
+        if not np.isfinite(x) or x < 0:
+            raise ValueError(f"weight for {m!r} must be finite and >= 0")
+        usable[m] = x
+    total = sum(usable.values())
+    if not usable or total <= 0:
+        raise ValueError(
+            f"no positive weight for any model of this race "
+            f"(models: {list(cfg.models)})")
+    return {m: v / total for m, v in usable.items()}, "manual"
+
+
 def generate_grid(cfg: RaceConfig, step: float = 0.25):
     lats = np.arange(cfg.bbox.lat_min, cfg.bbox.lat_max + 1e-9, step)
     lons = np.arange(cfg.bbox.lon_min, cfg.bbox.lon_max + 1e-9, step)
     return lats, lons
 
 
-def run(cfg: RaceConfig | None = None, valid_time=None, step: float = 0.25) -> pd.DataFrame:
+def run(cfg: RaceConfig | None = None, valid_time=None, step: float = 0.25,
+        weights_override: dict | None = None) -> pd.DataFrame:
     """Blend the newest complete run of each configured model onto a grid.
 
     Returns lat, lon, speed_ms (SI), direction (deg true, FROM),
     uncertainty_ms (mean abs model-to-blend wind-speed spread), n_models.
     Display layers convert to knots at the boundary.
+    weights_override: manual {model: weight} for this request only (see
+    resolve_weights) — the dashboard's user-configurable blend.
     """
     import xarray as xr
 
@@ -97,7 +134,7 @@ def run(cfg: RaceConfig | None = None, valid_time=None, step: float = 0.25) -> p
             "No complete model runs on disk yet — run "
             "`python -m gribbosaurus_rex fetch-once` first.")
 
-    weights, weight_source = current_weights(cfg)
+    weights, weight_source = resolve_weights(cfg, weights_override)
     w_total = sum(weights.get(m, 0.05) for m in fields)
     u_blend = np.zeros((len(lats), len(lons)))
     v_blend = np.zeros_like(u_blend)
