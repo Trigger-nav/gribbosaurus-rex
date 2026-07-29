@@ -37,9 +37,13 @@ observations:
   openmeteo: false
   focus: {lat: 50.76, lon: -1.30}   # Cowes
   nmea:
-    enabled: false
-    transport: udp
-    port: 10110
+    enabled: true          # UDP listener in the API process (boat feed).
+    transport: udp         # Expedition -> UDP output to
+    port: 10110            #   api.stingraymarinetechnology.com:10110
+                           # NB unauthenticated/lossy — the HTTPS sender
+                           # (scripts/stingray_sender.py) is the race-day
+                           # path; this is the zero-install fallback.
+                           # Requires UDP 10110 open in the firewall.
 
 trust:
   yacht: 1.0
