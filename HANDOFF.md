@@ -387,6 +387,46 @@ With this in, `ukmo_ukv` scores live in both its races (first published
 2026-07-28: Channel 0.52/0.49/0.46, Fastnet 0.51/0.50/0.49 by lead band)
 and the public feed carries all seven models.
 
+## Yacht live feed (added 2026-07-29 — both paths live-verified)
+
+Stingray's instruments now feed the arbiter two ways; both write
+`source="yacht"` obs (trust 1.0), and a fresh fix (<6 h) re-anchors
+`compute_scores` distance weighting to the boat (`anchor=yacht` in the
+confidence log) instead of the configured focus point.
+
+1. **UDP direct (zero-install, the current default).**
+   `configs/english-channel.yaml` sets `nmea.enabled: true`, so the
+   existing `NmeaListener` (obs/nmea.py) runs inside gribbo-api on UDP
+   10110. Boat side: Expedition instruments *output* connection, UDP to
+   `api.stingraymarinetechnology.com:10110`, sentences RMC + MWD + MDA
+   (MWV+HDT also parsed). Hetzner box has no host firewall (`ufw`
+   inactive) so the port is reachable. Caveats, accepted for now:
+   unauthenticated (spoofable — an injected "yacht" obs skews scoring
+   at trust 1.0) and lossy (4G dropouts lose obs silently, no buffering).
+   Station name defaults to `yacht`.
+
+2. **HTTPS push (race-day path: authenticated + offline queue).**
+   `POST /obs/yacht` (api/main.py) + validation in `obs/yacht_push.py`;
+   auth = `X-Gribbo-Token` header vs `GRIBBO_YACHT_TOKEN` in
+   /etc/gribbo/env (endpoint answers 503 until set; token in the chat
+   log = burned, regenerate with `openssl rand -hex 24`). Boat side:
+   `scripts/stingray_sender.py` on the Expedition PC (stdlib-only,
+   Windows-safe; needs python.org Python, "Add to PATH"): listens UDP
+   127.0.0.1:10110 from Expedition, 1 obs/min, disk-queues through
+   dropouts (`stingray_queue.jsonl`, cap 20k), POSTs batches, retries
+   with backoff; duplicates are no-ops server-side via
+   UNIQUE(source, station, time). Station name `stingray`.
+   Live-verified 2026-07-28: accepted:1 then duplicates:1.
+
+Post-race batch alternative: `python -m gribbosaurus_rex import-log
+<expedition.csv>` (obs/expedition.py) loads logged Utc/Lat/Lon/Tws/Twd/
+Baro for backtesting — useful for exactly the offshore stretches UDP
+loses. Tests: `tests/test_yacht_push.py` (validation, token, dedup,
+sender parse+queue — offline). The sender's NMEA parsing mirrors
+obs/nmea.py: change sentence handling in BOTH or they drift.
+Masthead calibration/upwash corrections remain Phase-4 work — current
+scoring takes TWS/TWD as-is.
+
 ## Roadmap next steps (in rough order)
 
 1. ~~Cleanup + guard~~ Done 2026-07-13: smoke loopback writes
