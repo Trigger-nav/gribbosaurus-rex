@@ -85,8 +85,8 @@ except requests.RequestException as e:
     st.stop()
 
 race_names = [r["name"] for r in RACES]
-# default the selector to the Channel (override with GRIBBO_DEFAULT_RACE)
-_default_race = os.environ.get("GRIBBO_DEFAULT_RACE", "english-channel")
+# default the selector to home waters (override with GRIBBO_DEFAULT_RACE)
+_default_race = os.environ.get("GRIBBO_DEFAULT_RACE", "solent")
 _default_idx = race_names.index(_default_race) if _default_race in race_names else 0
 race = st.sidebar.selectbox("Race area", race_names, index=_default_idx)
 race_cfg = next(r for r in RACES if r["name"] == race)
