@@ -148,6 +148,36 @@ if sc["latest"]:
         hist["time"] = pd.to_datetime(hist["time"])
         st.line_chart(hist.pivot_table(index="time", columns="model",
                                        values="score"))
+
+    # what-if: rescore with your own obs-source weighting (never persisted)
+    with st.expander("Obs source weighting (what-if)"):
+        st.caption(
+            "Rescore the models trusting each observation source as much "
+            "as YOU do — e.g. slide windycator down if you think the club "
+            "anemometers are reading dirty air, or zero METAR to see a "
+            "marine-only view. This is a live what-if: nothing is saved, "
+            "and the published feed keeps the configured weighting.")
+        _cfg_trust = race_cfg.get("trust", {})
+        _tsliders = {}
+        _tcols = st.columns(min(max(len(_cfg_trust), 1), 4))
+        for i, (srcname, tval) in enumerate(sorted(_cfg_trust.items())):
+            with _tcols[i % len(_tcols)]:
+                _tsliders[srcname] = st.slider(
+                    srcname, 0.0, 2.0, float(tval), 0.05,
+                    key=f"trust_{race}_{srcname}")
+        if st.button("Rescore with these weightings"):
+            import json as _tjson
+            _pv = api("/scores/preview", race=race,
+                      trust=_tjson.dumps(_tsliders))
+            _cmp = pd.DataFrame({
+                "official": pd.Series(_pv["official"]),
+                "your weighting": pd.Series(_pv["preview"]),
+            }).dropna(how="all")
+            _cmp["delta"] = (_cmp["your weighting"]
+                             - _cmp["official"]).round(4)
+            st.dataframe(_cmp.sort_values("your weighting",
+                                          ascending=False),
+                         use_container_width=True)
 else:
     st.info("No confidence scores yet — they appear once observations "
             "have been fetched and verified against model runs.")

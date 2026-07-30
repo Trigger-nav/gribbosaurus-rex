@@ -179,10 +179,40 @@ def verify_pass(cfg: RaceConfig, run_store: RunStore, obs_store: ObsStore) -> in
 
 # ---------------------------------------------------------------- confidence
 
+def resolve_trust(cfg: RaceConfig, override: dict | None = None):
+    """Per-source trust for a scoring run: validated user override values
+    on top of the race's configured trust. Sources absent from the
+    override keep their configured value; 0 excludes a source entirely.
+    Raises ValueError on junk so the API can 422."""
+    if override is None:
+        return cfg.trust_for
+    if not isinstance(override, dict):
+        raise ValueError("trust must be an object of {source: number}")
+    clean: dict[str, float] = {}
+    for src, v in override.items():
+        try:
+            x = float(v)
+        except (TypeError, ValueError):
+            raise ValueError(f"trust for {src!r} is not a number: {v!r}")
+        if not np.isfinite(x) or not 0.0 <= x <= 2.0:
+            raise ValueError(f"trust for {src!r} must be in 0..2 (got {x})")
+        clean[str(src)] = x
+    return lambda source: clean.get(source, cfg.trust_for(source))
+
+
 def compute_scores(cfg: RaceConfig, obs_store: ObsStore,
-                   now: datetime | None = None) -> dict[str, float]:
-    """Rolling weighted confidence per model; persists a score snapshot."""
+                   now: datetime | None = None, *,
+                   trust_override: dict | None = None,
+                   persist: bool = True) -> dict[str, float]:
+    """Rolling weighted confidence per model; persists a score snapshot.
+
+    trust_override + persist=False = the dashboard's what-if mode: score
+    with the user's obs-source weighting and return the result WITHOUT
+    writing to the scores table — the stored history, blend weights and
+    published feed only ever see the configured trust.
+    """
     now = now or datetime.now(timezone.utc)
+    trust_for = resolve_trust(cfg, trust_override)
 
     # anchor for distance weighting: fresh yacht fix beats configured focus
     yacht = obs_store.yacht_latest()
@@ -196,7 +226,7 @@ def compute_scores(cfg: RaceConfig, obs_store: ObsStore,
         d_nm = haversine_nm(anchor[0], anchor[1], r["lat"], r["lon"])
         age_h = (now - datetime.fromisoformat(r["obs_time"])) \
             .total_seconds() / 3600.0
-        w = (cfg.trust_for(r["source"])
+        w = (trust_for(r["source"])
              * distance_weight(d_nm, cfg.scoring.half_weight_nm)
              * _half_life_weight(r["lead_hours"], cfg.scoring.lead_half_h)
              * _half_life_weight(age_h, cfg.scoring.recency_half_h))
@@ -221,14 +251,16 @@ def compute_scores(cfg: RaceConfig, obs_store: ObsStore,
         press_bias = (float(np.nansum(w * ep) / w.sum())
                       if not np.all(np.isnan(ep)) else None)
         scores[model] = score
-        obs_store.insert_score(
-            time_iso=t_iso, model=model, race=cfg.name, score=round(score, 4),
-            n_obs=len(samples), rmse_vector_ms=round(rmse, 3),
-            mean_dir_err=round(float(np.sum(w * ed) / w.sum()), 1),
-            mean_press_bias=(round(press_bias, 2)
-                             if press_bias is not None else None))
+        if persist:
+            obs_store.insert_score(
+                time_iso=t_iso, model=model, race=cfg.name,
+                score=round(score, 4),
+                n_obs=len(samples), rmse_vector_ms=round(rmse, 3),
+                mean_dir_err=round(float(np.sum(w * ed) / w.sum()), 1),
+                mean_press_bias=(round(press_bias, 2)
+                                 if press_bias is not None else None))
 
-    if scores:
+    if scores and persist:
         log.info("confidence: %s (anchor=%s)",
                  {m: round(s, 3) for m, s in scores.items()},
                  "yacht" if yacht else "focus")

@@ -91,7 +91,9 @@ class NmeaState:
         typ = f[0][-3:]
         now = time.monotonic()
         try:
-            if typ == "RMC" and len(f) >= 7 and f[2] == "A":
+            # accepts Expedition's RMC-shaped RMB too (see obs/nmea.py)
+            if (typ in ("RMC", "RMB") and len(f) >= 7 and f[2] == "A"
+                    and f[4] in ("N", "S") and f[6] in ("E", "W")):
                 lat = _dm_to_deg(f[3], f[4])
                 lon = _dm_to_deg(f[5], f[6])
                 if lat is not None and lon is not None:

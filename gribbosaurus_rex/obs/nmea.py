@@ -83,7 +83,14 @@ class NmeaState:
         typ = f[0][-3:]  # talker-agnostic: GPRMC/IIRMC/... -> RMC
         now = time.monotonic()
         try:
-            if typ == "RMC" and len(f) >= 7 and f[2] == "A":
+            # RMC — position + time. Expedition quirk (seen live 2026-07-30):
+            # it emits RMC-shaped payloads under the RMB sentence id
+            # ($ECRMB,hhmmss,A,lat,N,lon,W,sog,cog,ddmmyy,var,E). A real RMB
+            # (waypoint nav) has status at f[1] and L/R steer at f[3], never
+            # a time at f[1] with hemispheres at f[4]/f[6] — so accepting
+            # the RMC field shape under either id is unambiguous.
+            if (typ in ("RMC", "RMB") and len(f) >= 7 and f[2] == "A"
+                    and f[4] in ("N", "S") and f[6] in ("E", "W")):
                 lat = _dm_to_deg(f[3], f[4])
                 lon = _dm_to_deg(f[5], f[6])
                 if lat is not None and lon is not None:

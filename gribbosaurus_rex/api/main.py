@@ -87,6 +87,7 @@ def races():
         "bbox": vars(r.bbox),
         "models": list(r.models),
         "max_lead_hours": r.max_lead_hours,
+        "trust": dict(r.trust),   # obs-source weighting (dashboard sliders)
     } for r in RACES]
 
 
@@ -230,6 +231,39 @@ def scores(race: str | None = None):
         "latest": store.latest_scores(race=rc.name),
         "blend_weights": weights,
         "weight_source": source,   # "confidence" once verification has data
+    }
+
+
+@app.get("/scores/preview")
+def scores_preview(race: str | None = None, trust: str | None = None):
+    """What-if confidence: recompute scores with a user obs-source
+    weighting, e.g. ?trust={"windycator":0.2,"yacht":1.0}. Sources left
+    out keep the race's configured trust; 0 excludes a source. NOTHING
+    is persisted — the stored history, blend weights and published feed
+    are untouched. Returns the what-if scores alongside the official
+    latest for comparison."""
+    import json
+
+    from gribbosaurus_rex.verify import compute_scores
+
+    rc = resolve_race(race)
+    override = None
+    if trust:
+        try:
+            override = json.loads(trust)
+        except json.JSONDecodeError as e:
+            raise HTTPException(422, f"trust is not valid JSON: {e}") from e
+    store = ObsStore(rc.db_path)
+    try:
+        preview = compute_scores(rc, store, trust_override=override,
+                                 persist=False)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    return {
+        "race": rc.name,
+        "preview": {m: round(s, 4) for m, s in preview.items()},
+        "official": store.latest_scores(race=rc.name),
+        "trust_used": {**dict(rc.trust), **(override or {})},
     }
 
 

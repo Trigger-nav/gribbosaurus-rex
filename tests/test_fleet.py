@@ -31,7 +31,15 @@ def test_repo_fleet_loads():
     fleet = load_fleet(REPO / "configs")
     names = {r.name for r in fleet}
     assert names == {"central-med", "english-channel", "fastnet",
-                     "middle-sea-race", "caribbean-600", "solent"}
+                     "middle-sea-race", "caribbean-600", "solent",
+                     "round-britain-ireland"}
+    rbi = next(r for r in fleet if r.name == "round-britain-ireland")
+    assert rbi.bbox.contains(60.85, -0.88)              # Muckle Flugga
+    assert rbi.bbox.contains(51.39, -9.60)              # Fastnet Rock area
+    assert rbi.bbox.contains(52.5, 2.0)                 # North Sea leg
+    assert "mf_arpege" in rbi.models                    # covers to 72N
+    assert "mf_arome" not in rbi.models                 # domain caps at 55.4N
+    assert "ukmo_ukv" not in rbi.models                 # Channel-only order
     channel = next(r for r in fleet if r.name == "english-channel")
     assert channel.bbox.contains(50.76, -1.30)          # Cowes
     assert channel.bbox.contains(49.65, -1.62)          # Cherbourg

@@ -77,20 +77,26 @@ def test_build_rows_obs_without_direction():
 
 
 def test_store_batch_roundtrip():
+    # times relative to now — hardcoded dates age out of the 48h window
+    # and start failing days later (learned the hard way 2026-07-30)
+    from datetime import datetime, timedelta, timezone
+    base = datetime.now(timezone.utc) - timedelta(hours=3)
     with tempfile.TemporaryDirectory() as td:
         st = ObsStore(Path(td) / "t.sqlite")
         for i in range(3):
             st.insert_obs(source="windycator", station=f"s{i}", lat=50.0,
-                          lon=-1.0, time_iso=f"2026-07-28T0{i}:00:00+00:00",
+                          lon=-1.0,
+                          time_iso=(base + timedelta(hours=i))
+                          .isoformat(timespec="seconds"),
                           wind_speed_ms=8.0, wind_dir_deg=270.0)
-        cyc = "2026-07-28T00:00:00+00:00"
+        cyc = (base - timedelta(hours=6)).isoformat(timespec="seconds")
         rows = [(1, "ukmo_ukv", cyc, 1.0, 7.5, 265.0, None, 0.9, -0.5, 5.0, None),
                 (2, "ukmo_ukv", cyc, 2.0, 7.0, 260.0, None, 1.2, -1.0, 10.0, None)]
         assert st.insert_verifications(rows) == 2
         assert st.insert_verifications(rows) == 0        # OR IGNORE dedups
         assert st.insert_verifications([]) == 0
         assert st.verified_obs_ids("ukmo_ukv", cyc) == {1, 2}
-        assert st.verified_obs_ids("ukmo_ukv", "2026-07-28T06:00:00+00:00") == set()
+        assert st.verified_obs_ids("ukmo_ukv", "1999-01-01T00:00:00+00:00") == set()
         assert st.verified_obs_ids("mf_arome", cyc) == set()
         # batch rows must be readable through the existing window query
         got = st.verifications_window(window_h=48.0)

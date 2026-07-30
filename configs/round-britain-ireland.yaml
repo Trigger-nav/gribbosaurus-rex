@@ -1,0 +1,72 @@
+# Round Britain & Ireland — Cowes start/finish, leaving Britain and all
+# of Ireland to starboard: Land's End, west of Ireland, St Kilda, Muckle
+# Flugga (Shetland), down the North Sea and back. ~1,800 nm, 8-12 days.
+#
+# Model set is deliberately smaller than the Channel races:
+#   - mf_arome  OFF: its domain caps at 55.4N (no Scotland/Shetland) and
+#     including it here would balloon the AROME fetch-crop union for a
+#     model that covers barely a third of the course.
+#   - ukmo_ukv  OFF: the ukv-channel order covers the Solent start only.
+#   - mf_arpege ON:  ARPEGE-Europe reaches 72N and its files are ~1 MB —
+#     the only high-res that genuinely covers the whole course.
+# NB adding this race grows the ICON-EU fetch-crop union northward
+# (lat_max 52.2 -> 61.3), so icon downloads/decodes get ~1.5x bigger for
+# every race. Acceptable; if pass times creep, see HANDOFF perf levers.
+#
+# Obs: windycator is UK-wide (~180 coastal stations, all round Britain);
+# METAR covers the coast incl. Stornoway/Kirkwall/Sumburgh. NDBC list
+# below = fastnet's live-confirmed buoys (SW legs). Before the race, run
+# scripts/find_ndbc_stations.py radial audits along the N/NE legs — the
+# Scottish K-buoys and Irish M-buoys come and go on GTS, and station ids
+# must be live-verified, not guessed (see the fastnet M3/M5 note).
+
+name: round-britain-ireland
+description: Round Britain & Ireland — Cowes, west-about, Muckle Flugga, home
+enabled: true
+
+bbox:
+  lat_min: 48.8       # Channel start/finish sea room (matches fastnet)
+  lat_max: 61.3       # Muckle Flugga (60.85) + sea room
+  lon_min: -12.0      # west of Ireland offing
+  lon_max: 3.0        # North Sea / east coast legs
+
+models:
+  - ifs
+  - aifs
+  - gfs
+  - icon_eu
+  - mf_arpege       # 0.1° Europe to 72N — covers the entire course
+
+max_lead_hours: 144
+keep_runs: 8
+data_dir: data
+poll_minutes: 10
+
+observations:
+  metar: true
+  windycator: true
+  # Live-confirmed SW-leg buoys (from fastnet). Audit northern legs
+  # before racing: scripts/find_ndbc_stations.py
+  ndbc_stations: ["62107", "62030", "62050", "62103"]
+  openmeteo: false
+  focus: {lat: 50.76, lon: -1.30}   # Cowes start — the yacht feed
+                                    # re-anchors scoring live once racing
+  nmea:
+    enabled: false
+    transport: udp
+    port: 10110
+
+trust:
+  yacht: 1.0
+  metar: 0.85
+  ndbc: 0.9
+  windycator: 0.8
+  openmeteo: 0.4
+
+scoring:
+  window_h: 48
+  half_weight_nm: 120      # course-scale: the whole leg ahead matters
+  lead_half_h: 48          # multi-day planning horizon
+  recency_half_h: 12
+  err_scale_ms: 2.5
+  publish_window_h: 24
