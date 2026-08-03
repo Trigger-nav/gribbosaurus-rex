@@ -37,13 +37,16 @@ observations:
   openmeteo: false
   focus: {lat: 50.76, lon: -1.30}   # Cowes
   nmea:
-    enabled: true          # UDP listener in the API process (boat feed).
-    transport: udp         # Expedition -> UDP output to
-    port: 10110            #   api.stingraymarinetechnology.com:10110
-                           # NB unauthenticated/lossy — the HTTPS sender
-                           # (scripts/stingray_sender.py) is the race-day
-                           # path; this is the zero-install fallback.
-                           # Requires UDP 10110 open in the firewall.
+    enabled: true          # NMEA listener in the API process (boat feed).
+    transport: tcp         # TCP, not UDP: mobile carriers pass TCP but
+    port: 10110            # drop UDP (proven with tcpdump 2026-07-30 —
+                           # Expedition's UDP never arrived; HTTPS did).
+                           # Boat side, zero install: Expedition (or any
+                           # nav software) opens a TCP connection to
+                           # api.stingraymarinetechnology.com:10110 and
+                           # streams sentences. Still unauthenticated —
+                           # scripts/stingray_sender.py remains the
+                           # authenticated+buffered alternative.
 
 trust:
   yacht: 1.0
