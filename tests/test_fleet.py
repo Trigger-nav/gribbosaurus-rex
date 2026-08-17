@@ -38,7 +38,7 @@ def test_repo_fleet_loads():
     assert pm.bbox.contains(43.74, 7.42)                # Monte Carlo
     assert pm.bbox.contains(41.13, 9.53)                # Porto Cervo gate
     assert "mf_arome" in pm.models                      # full-course high-res
-    assert "icon_2i" not in pm.models                   # pending Mistral fetcher
+    assert "icon_2i" in pm.models                       # MeteoHub open data
     rbi = next(r for r in fleet if r.name == "round-britain-ireland")
     assert rbi.bbox.contains(60.85, -0.88)              # Muckle Flugga
     assert rbi.bbox.contains(51.39, -9.60)              # Fastnet Rock area

@@ -34,7 +34,7 @@ models:
   - icon_eu
   - mf_arome        # 2.5 km — full-course coverage, the one to beat
   - mf_arpege       # 0.1° Europe
-  #- icon_2i        # Italian 2.2 km — enable when the Mistral fetcher lands
+  - icon_2i         # Italian 2.2 km via MeteoHub open data (no key)
 
 max_lead_hours: 96
 keep_runs: 8

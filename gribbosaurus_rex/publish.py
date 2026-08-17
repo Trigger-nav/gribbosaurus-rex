@@ -52,6 +52,7 @@ PUBLISH_NAMES = {
     "mf_arpege_global": "mf_arpege_global",
     "mf_arome_antilles": "mf_arome_antilles",
     "ukmo_ukv": "ukmo_ukv",
+    "icon_2i": "icon_2i",
 }
 
 LEAD_BUCKETS = ((0, 12), (12, 24), (24, 48))

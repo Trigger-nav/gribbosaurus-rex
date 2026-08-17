@@ -12,6 +12,7 @@ from gribbosaurus_rex.fetch.meteofrance import (
     ArpegeFetcher,
     ArpegeGlobalFetcher,
 )
+from gribbosaurus_rex.fetch.icon2i import Icon2iFetcher
 from gribbosaurus_rex.fetch.ukmo import UkvFetcher
 
 FETCHERS: dict[str, type[BaseFetcher]] = {
@@ -26,6 +27,7 @@ FETCHERS: dict[str, type[BaseFetcher]] = {
     "mf_arome_antilles": AromeAntillesFetcher,
     # Met Office DataHub (order-based)
     "ukmo_ukv": UkvFetcher,
+    "icon_2i": Icon2iFetcher,
 }
 
 _instances: dict[str, BaseFetcher] = {}
