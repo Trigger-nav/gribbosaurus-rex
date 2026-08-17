@@ -1,0 +1,68 @@
+# Palermo–Montecarlo — Palermo start, Porto Cervo gate (NE Sardinia),
+# through/past the Bonifacio Strait area, Ligurian Sea, Monte Carlo
+# finish. ~500 nm, typically 2-4 days, mid-August.
+#
+# High-res coverage: the FULL course sits inside the AROME-France domain
+# (37.5-55.4N) — mf_arome is the flagship high-res here. mf_arpege
+# covers trivially. icon_2i (Italian 2.2 km ICON via Mistral/Meteo-Hub)
+# is the planned second high-res — enable the line below once the
+# fetcher lands (needs MISTRAL_API_KEY; see HANDOFF model roadmap).
+# NB icon_eu here is DWD's ~6.5 km ICON-EU — a different model from
+# icon_2i, both worth scoring side by side on this course.
+#
+# Obs: METAR carries this area (Palermo, Trapani, Cagliari, Olbia,
+# Ajaccio, Bastia, Genoa, Nice, Monaco area airports — bbox-driven).
+# windycator is UK-only. Italian RON / Météo-France Med buoys may exist
+# on NDBC/GTS — run scripts/find_ndbc_stations.py radial audits around
+# the Tyrrhenian before racing; ids must be live-verified, not guessed.
+# The yacht feed scores everywhere the boat goes, as always.
+
+name: palermo-montecarlo
+description: Palermo to Monte Carlo via the Porto Cervo gate
+enabled: true
+
+bbox:
+  lat_min: 37.7       # Palermo (38.13) + Sicilian north coast sea room
+  lat_max: 44.2       # Monaco (43.74) + Ligurian sea room
+  lon_min: 6.5        # Nice/Monaco approaches
+  lon_max: 14.5       # Palermo (13.34) + Aeolian offing
+
+models:
+  - ifs
+  - aifs
+  - gfs
+  - icon_eu
+  - mf_arome        # 2.5 km — full-course coverage, the one to beat
+  - mf_arpege       # 0.1° Europe
+  #- icon_2i        # Italian 2.2 km — enable when the Mistral fetcher lands
+
+max_lead_hours: 96
+keep_runs: 8
+data_dir: data
+poll_minutes: 10
+
+observations:
+  metar: true
+  windycator: false        # UK aggregator — no Med coverage
+  ndbc_stations: []        # audit Tyrrhenian GTS buoys before racing
+  openmeteo: false
+  focus: {lat: 41.2, lon: 9.6}   # Porto Cervo gate — mid-course pivot
+  nmea:
+    enabled: false
+    transport: tcp
+    port: 10110
+
+trust:
+  yacht: 1.0
+  metar: 0.85
+  ndbc: 0.9
+  windycator: 0.8
+  openmeteo: 0.4
+
+scoring:
+  window_h: 48
+  half_weight_nm: 80       # course-scale (Palermo->gate ~200 nm)
+  lead_half_h: 30
+  recency_half_h: 12
+  err_scale_ms: 2.5
+  publish_window_h: 24

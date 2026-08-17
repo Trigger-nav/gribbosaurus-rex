@@ -32,7 +32,13 @@ def test_repo_fleet_loads():
     names = {r.name for r in fleet}
     assert names == {"central-med", "english-channel", "fastnet",
                      "middle-sea-race", "caribbean-600", "solent",
-                     "round-britain-ireland"}
+                     "round-britain-ireland", "palermo-montecarlo"}
+    pm = next(r for r in fleet if r.name == "palermo-montecarlo")
+    assert pm.bbox.contains(38.13, 13.34)               # Palermo
+    assert pm.bbox.contains(43.74, 7.42)                # Monte Carlo
+    assert pm.bbox.contains(41.13, 9.53)                # Porto Cervo gate
+    assert "mf_arome" in pm.models                      # full-course high-res
+    assert "icon_2i" not in pm.models                   # pending Mistral fetcher
     rbi = next(r for r in fleet if r.name == "round-britain-ireland")
     assert rbi.bbox.contains(60.85, -0.88)              # Muckle Flugga
     assert rbi.bbox.contains(51.39, -9.60)              # Fastnet Rock area

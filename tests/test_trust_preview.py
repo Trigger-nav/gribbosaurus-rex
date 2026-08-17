@@ -22,7 +22,10 @@ from gribbosaurus_rex.config import BBox, RaceConfig  # noqa: E402
 from gribbosaurus_rex.obs.store import ObsStore  # noqa: E402
 from gribbosaurus_rex.verify import compute_scores, resolve_trust  # noqa: E402
 
-NOW = datetime(2026, 8, 1, 12, 0, 0, tzinfo=timezone.utc)
+# relative to real now: verifications_window cuts on the wall clock,
+# so fixed dates age out and the test rots (bitten twice: 2026-07-30
+# in test_verify_batch, 2026-08-17 here)
+NOW = datetime.now(timezone.utc)
 ANCHOR = (50.79, -1.29)
 
 CFG = RaceConfig(name="t",
