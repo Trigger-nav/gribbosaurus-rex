@@ -95,6 +95,50 @@ def check_all(cfg: RaceConfig, store: RunStore) -> dict[str, str | None]:
     return results
 
 
+def staleness_report(fetch_cfg: RaceConfig, run_store: RunStore,
+                     now: datetime | None = None) -> list[str]:
+    """Warnings for enabled models whose newest complete run is much older
+    than their cycle cadence — the alarm for silently dead feeds.
+
+    Motivation: ukmo_ukv stopped fetching on 2026-08-02 (DataHub trial
+    lapse) and nobody noticed for 15 days, because is_available() treats
+    auth failures as "not published yet" by design. This check makes a
+    dead feed loud within a couple of cycles instead of weeks.
+
+    Threshold: 2x the model's cycle interval + max(publish lag, 3 h).
+    A model with no complete runs at all is also reported (loud on a
+    brand-new model's first pass, which is informative, not a bug).
+    """
+    now = now or datetime.now(timezone.utc)
+    warnings: list[str] = []
+    for model in fetch_cfg.models:
+        try:
+            f = get_fetcher(model)
+        except Exception:  # noqa: BLE001 — unknown model name in config
+            warnings.append(f"{model}: no fetcher registered")
+            continue
+        hours = sorted(set(f.cycle_hours))
+        gaps = [(hours[(i + 1) % len(hours)] - hours[i]) % 24 or 24
+                for i in range(len(hours))]
+        interval = max(gaps)
+        lag_h = f.min_publish_lag.total_seconds() / 3600.0
+        threshold = 2 * interval + max(lag_h, 3.0)
+        rec = run_store.latest_complete(model)
+        if rec is None:
+            warnings.append(f"{model}: no complete runs yet")
+            continue
+        age_h = (now - datetime.fromisoformat(rec.cycle)
+                 ).total_seconds() / 3600.0
+        if age_h > threshold:
+            warnings.append(
+                f"{model}: newest run {rec.cycle} is {age_h:.0f}h old "
+                f"(cycles every {interval}h; threshold {threshold:.0f}h) "
+                f"— check the feed/credentials")
+    for w in warnings:
+        log.warning("STALE MODEL: %s", w)
+    return warnings
+
+
 def obs_and_verify_pass(races: RaceConfig | list[RaceConfig],
                         run_store: RunStore) -> dict:
     """One Phase-2 pass over the fleet: per race, pull shore obs, verify

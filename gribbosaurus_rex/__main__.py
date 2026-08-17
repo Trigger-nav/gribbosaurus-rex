@@ -153,7 +153,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "arbiter-once":
         # The Stingray arbiter's cron entrypoint: fetch new runs, fetch
         # obs, verify, publish scores.json. One pass, then exit.
-        from gribbosaurus_rex.scheduler import check_all, obs_and_verify_pass
+        from gribbosaurus_rex.scheduler import (check_all, obs_and_verify_pass,
+                                                 staleness_report)
         from gribbosaurus_rex.store.runs import RunStore
 
         run_store = RunStore(cfg.db_path)
@@ -164,6 +165,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"new obs:           {result['new_obs']}")
         print(f"new verifications: {result['new_verifications']}")
         print(f"published:         {result.get('published', 'FAILED')}")
+        for w in staleness_report(cfg, run_store):
+            print(f"STALE MODEL:       {w}")
         return 0 if result.get("published") else 1
 
     return 1
