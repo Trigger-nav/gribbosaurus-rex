@@ -36,6 +36,7 @@ observations:
   # re-audit with scripts/find_ndbc_stations.py before racing in case the
   # Celtic Sea buoys come back on GTS.
   ndbc_stations: ["62107", "62030", "62050", "62103"]
+  mf_buoys: true          # Météo-France GTS buoys — one call, bbox-filtered
   openmeteo: false
   focus: {lat: 50.0, lon: -6.0}    # mid-course, Celtic Sea approaches
   nmea:

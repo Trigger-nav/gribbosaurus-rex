@@ -64,6 +64,8 @@ class ObsConfig:
     metar: bool = True
     windycator: bool = False   # UK coastal aggregator (Solent/Channel/etc.)
     ndbc_stations: tuple[str, ...] = ()
+    mf_buoys: bool = False     # Météo-France DPObs buoys (one call, ~830 buoys)
+    mf_stations: tuple[str, ...] = ()  # curated DPObs ground station ids
     openmeteo: bool = False
     focus_lat: float | None = None   # distance-weight anchor when no yacht fix
     focus_lon: float | None = None
@@ -81,7 +83,8 @@ class ScoringConfig:
 
 
 DEFAULT_TRUST = {"yacht": 1.0, "metar": 0.85, "ndbc": 0.9,
-                 "windycator": 0.8, "openmeteo": 0.4}
+                 "windycator": 0.8, "openmeteo": 0.4,
+                 "mf_buoy": 0.9, "mf_station": 0.85}
 
 
 @dataclass(frozen=True)
@@ -144,6 +147,8 @@ def load_config(path: str | os.PathLike | None = None) -> RaceConfig:
         metar=bool(obs_raw.get("metar", True)),
         windycator=bool(obs_raw.get("windycator", False)),
         ndbc_stations=tuple(str(s) for s in obs_raw.get("ndbc_stations", []) or []),
+        mf_buoys=bool(obs_raw.get("mf_buoys", False)),
+        mf_stations=tuple(str(s) for s in obs_raw.get("mf_stations", []) or []),
         openmeteo=bool(obs_raw.get("openmeteo", False)),
         focus_lat=float(focus["lat"]) if "lat" in focus else None,
         focus_lon=float(focus["lon"]) if "lon" in focus else None,

@@ -194,4 +194,18 @@ def fetch_all(cfg: RaceConfig, store: ObsStore) -> int:
             new += fetch_ndbc(cfg, store)
         except Exception:  # noqa: BLE001
             log.exception("ndbc fetch failed")
+    if cfg.obs.mf_buoys or cfg.obs.mf_stations:
+        from gribbosaurus_rex.obs.mf_obs import (fetch_mf_buoys,
+                                                 fetch_mf_stations)
+
+        if cfg.obs.mf_buoys:
+            try:
+                new += fetch_mf_buoys(cfg, store)
+            except Exception:  # noqa: BLE001
+                log.exception("mf_buoy fetch failed")
+        if cfg.obs.mf_stations:
+            try:
+                new += fetch_mf_stations(cfg, store)
+            except Exception:  # noqa: BLE001
+                log.exception("mf_station fetch failed")
     return new

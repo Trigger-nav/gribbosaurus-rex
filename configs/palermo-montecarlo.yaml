@@ -45,6 +45,7 @@ observations:
   metar: true
   windycator: false        # UK aggregator — no Med coverage
   ndbc_stations: []        # audit Tyrrhenian GTS buoys before racing
+  mf_buoys: true          # Météo-France GTS buoys — one call, bbox-filtered
   openmeteo: false
   focus: {lat: 41.2, lon: 9.6}   # Porto Cervo gate — mid-course pivot
   nmea:

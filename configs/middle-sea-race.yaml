@@ -28,6 +28,7 @@ observations:
   metar: true      # LMML Malta, Sicily airports (Catania, Palermo, Trapani)
   windycator: false
   ndbc_stations: []
+  mf_buoys: true          # Météo-France GTS buoys — one call, bbox-filtered
   openmeteo: false
   focus: {lat: 35.90, lon: 14.51}   # Grand Harbour, Malta
   nmea:

@@ -34,6 +34,7 @@ observations:
   # 62103 Channel LV, 62305 Greenwich LV, 62030+62050 W Channel buoys,
   # 62304 Sandettie LV, 62170 F3. Re-audit: scripts/find_ndbc_stations.py
   ndbc_stations: ["62103", "62305", "62030", "62050", "62304", "62170"]
+  mf_buoys: true          # Météo-France GTS buoys — one call, bbox-filtered
   openmeteo: false
   focus: {lat: 50.76, lon: -1.30}   # Cowes
   nmea:

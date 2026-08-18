@@ -28,6 +28,7 @@ observations:
   metar: true
   windycator: false        # no UK-aggregator coverage in the Med
   ndbc_stations: []
+  mf_buoys: true          # Météo-France GTS buoys — one call, bbox-filtered
   openmeteo: false
   focus: {lat: 39.45, lon: 2.55}   # Palma Bay
   nmea:

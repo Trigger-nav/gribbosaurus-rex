@@ -19,6 +19,8 @@ SOURCE_COLORS = {
     "metar": [201, 133, 0],         # yellow
     "ndbc": [144, 133, 233],        # violet
     "openmeteo": [213, 81, 129],    # magenta
+    "mf_buoy": [0, 166, 141],       # teal — Météo-France GTS buoys
+    "mf_station": [186, 143, 46],   # ochre — MF coastal stations
     "test": [110, 110, 110],
 }
 COVERAGE_COLOR = [217, 89, 38]      # orange — model domain outlines
