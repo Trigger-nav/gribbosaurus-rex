@@ -4,7 +4,9 @@
 Goal: real coastal + buoy observations for Palermo-Montecarlo (Corsica
 stations sit right on the course) and extra French-coast obs for the
 Channel races. Docs (2026-08-18) name these under
-https://public-api.meteofrance.fr/public/DPObs :
+https://public-api.meteofrance.fr/public/DPObs (API version
+vv2 — live-confirmed 2026-08-18: v2 paths + apikey header answer 200;
+v1 paths return 900908, Bearer returns 401) :
 
   liste-stations            all ground stations (id, lat, lon)
   station/horaire           hourly obs per station (dd/ff/fxi10/pmer/t)
@@ -58,7 +60,7 @@ def main() -> int:
 
     print("== station list ==")
     path, r = try_get(http, headers,
-                      ["/v1/liste-stations", "/liste-stations"],
+                      ["/v2/liste-stations"],
                       {"format": "json"}, "stations")
     if r is None:
         print("!! no station list — likely missing the DPObs subscription "
@@ -93,8 +95,8 @@ def main() -> int:
                or pm[0].get("id") or pm[0].get("ID"))
         print(f"\n== hourly obs for sample station {sid} ==")
         path, r = try_get(http, headers,
-                          ["/v1/station/horaire", "/station/horaire",
-                           "/v1/station-horaire"],
+                          ["/v2/station/horaire", "/v2/station-horaire",
+                           "/v2/station/infrahoraire-6m"],
                           {"id_station": str(sid), "format": "json"}, "obs")
         if r is not None:
             rows = r.json()
@@ -102,7 +104,7 @@ def main() -> int:
 
     print("\n== buoys ==")
     path, r = try_get(http, headers,
-                      ["/v1/liste-bouees", "/liste-bouees"],
+                      ["/v2/liste-bouees"],
                       {"format": "json"}, "buoy-list")
     if r is not None:
         buoys = r.json()
@@ -114,7 +116,7 @@ def main() -> int:
             b0 = blist[0]
             bid = (b0.get("Id_bouee") or b0.get("id_bouee") or b0.get("id")
                    or b0.get("ID") or b0.get("numer_sta"))
-        pth, r2 = try_get(http, headers, ["/v1/bouees", "/bouees"],
+        pth, r2 = try_get(http, headers, ["/v2/bouees", "/v2/paquet/bouees"],
                           ({"id_bouee": str(bid), "format": "json"}
                            if bid else {"format": "json"}), "buoy-obs")
         if r2 is not None:
