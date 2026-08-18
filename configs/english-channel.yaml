@@ -23,7 +23,7 @@ models:
   - ukmo_ukv        # Met Office 2 km UK lat-lon (order ukv-channel, to 48h)
 
 max_lead_hours: 72
-keep_runs: 8
+keep_runs: 4        # was 8 — halved 2026-08-18: verify decodes every kept run per race and passes hit 39min CPU vs the 45min kill
 data_dir: data
 poll_minutes: 10
 

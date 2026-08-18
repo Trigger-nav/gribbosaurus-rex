@@ -38,7 +38,7 @@ models:
   - mf_arpege       # 0.1° Europe to 72N — covers the entire course
 
 max_lead_hours: 144
-keep_runs: 8
+keep_runs: 4        # was 8 — halved 2026-08-18: verify decodes every kept run per race and passes hit 39min CPU vs the 45min kill
 data_dir: data
 poll_minutes: 10
 
