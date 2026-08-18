@@ -69,6 +69,24 @@ def _zoom_for(b):
 st.set_page_config(page_title="Gribbosaurus Rex", page_icon="🦖", layout="wide")
 st.title("🦖 Gribbosaurus Rex")
 
+# In-app sign-in (set GRIBBO_DASH_PASSWORD in /etc/gribbo/env; unset = open).
+# This replaces Caddy basicauth, which Safari cannot use with Streamlit:
+# WebKit drops the Authorization header on the WebSocket upgrade, so the
+# app never loads there. A plain form works in every browser and phone.
+_dash_pw = os.environ.get("GRIBBO_DASH_PASSWORD")
+if _dash_pw and not st.session_state.get("authed"):
+    import hmac as _hmac
+    with st.form("gribbo_login"):
+        _pw = st.text_input("Password", type="password")
+        _go = st.form_submit_button("Sign in")
+    if _go:
+        if _hmac.compare_digest(_pw, _dash_pw):
+            st.session_state["authed"] = True
+            st.rerun()
+        else:
+            st.error("Wrong password")
+    st.stop()
+
 
 def api(path, **params):
     r = requests.get(f"{API_URL}{path}", params=params, timeout=60)
@@ -88,9 +106,14 @@ race_names = [r["name"] for r in RACES]
 # default the selector to home waters (override with GRIBBO_DEFAULT_RACE)
 _default_race = os.environ.get("GRIBBO_DEFAULT_RACE", "solent")
 _default_idx = race_names.index(_default_race) if _default_race in race_names else 0
-race = st.sidebar.selectbox("Race area", race_names, index=_default_idx)
+# selector lives in the MAIN page, not the sidebar: on phones Streamlit
+# collapses the sidebar behind a chevron and the race menu vanished.
+_selcol, _desccol = st.columns([1, 2])
+with _selcol:
+    race = st.selectbox("Race area", race_names, index=_default_idx)
 race_cfg = next(r for r in RACES if r["name"] == race)
-st.sidebar.caption(race_cfg["description"])
+with _desccol:
+    st.caption(race_cfg["description"])
 _b = race_cfg["bbox"]
 _focus = ((_b["lat_min"] + _b["lat_max"]) / 2,
           (_b["lon_min"] + _b["lon_max"]) / 2)
