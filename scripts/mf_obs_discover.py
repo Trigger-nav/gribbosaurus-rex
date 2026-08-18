@@ -42,6 +42,30 @@ def in_box(lat, lon, box):
     return box[0] <= lat <= box[1] and box[2] <= lon <= box[3]
 
 
+
+
+def parse_rows(r) -> list[dict]:
+    """v2 endpoints answer JSON or CSV depending on endpoint/mood —
+    liste-stations returns CSV even with format=json (seen live
+    2026-08-18). Parse whichever arrived; print a peek either way."""
+    print(f"    content-type={r.headers.get('content-type','?')!r} "
+          f"first-bytes={r.text[:120]!r}")
+    try:
+        data = r.json()
+        if isinstance(data, dict):
+            for v in data.values():
+                if isinstance(v, list):
+                    return v
+        return data if isinstance(data, list) else [data]
+    except ValueError:
+        import csv
+        import io
+        text = r.text
+        delim = ";" if text.splitlines()[0].count(";") \
+            >= text.splitlines()[0].count(",") else ","
+        return list(csv.DictReader(io.StringIO(text), delimiter=delim))
+
+
 def try_get(http, headers, paths, params=None, label=""):
     for path in paths:
         url = f"{DPOBS}{path}"
@@ -66,29 +90,27 @@ def main() -> int:
         print("!! no station list — likely missing the DPObs subscription "
               "on the portal application. Add it (free) and re-run.")
         return 1
-    stations = r.json()
-    if isinstance(stations, dict):   # some responses wrap the list
-        for v in stations.values():
-            if isinstance(v, list):
-                stations = v
-                break
+    stations = parse_rows(r)
     print(f"  {len(stations)} stations; first: "
-          f"{json.dumps(stations[0])[:220]}")
+          f"{json.dumps(stations[0], ensure_ascii=False)[:220]}")
 
     def coords(s):
         for la, lo in (("Latitude", "Longitude"), ("latitude", "longitude"),
                        ("lat", "lon")):
             if la in s and lo in s:
-                return float(s[la]), float(s[lo])
+                try:
+                    return float(s[la]), float(s[lo])
+                except (TypeError, ValueError):
+                    return None, None
         return None, None
 
-    pm = [s for s in stations if in_box(*coords(s), PM_BOX)
-          if coords(s)[0] is not None]
-    ec = [s for s in stations if in_box(*coords(s), EC_BOX)
-          if coords(s)[0] is not None]
+    located = [(s, *coords(s)) for s in stations]
+    located = [(s, la, lo) for s, la, lo in located if la is not None]
+    pm = [s for s, la, lo in located if in_box(la, lo, PM_BOX)]
+    ec = [s for s, la, lo in located if in_box(la, lo, EC_BOX)]
     print(f"  in Palermo-Montecarlo box: {len(pm)}  |  in Channel box: {len(ec)}")
     for s in pm[:8]:
-        print(f"    PM: {json.dumps(s)[:160]}")
+        print(f"    PM: {json.dumps(s, ensure_ascii=False)[:160]}")
 
     if pm:
         sid = (pm[0].get("Id_station") or pm[0].get("id_station")
@@ -99,18 +121,17 @@ def main() -> int:
                            "/v2/station/infrahoraire-6m"],
                           {"id_station": str(sid), "format": "json"}, "obs")
         if r is not None:
-            rows = r.json()
-            print(f"  {json.dumps(rows if isinstance(rows, dict) else rows[:2])[:600]}")
+            rows = parse_rows(r)
+            print(f"  {json.dumps(rows[:2], ensure_ascii=False)[:700]}")
 
     print("\n== buoys ==")
     path, r = try_get(http, headers,
                       ["/v2/liste-bouees"],
                       {"format": "json"}, "buoy-list")
     if r is not None:
-        buoys = r.json()
-        blist = buoys if isinstance(buoys, list) else next(
-            (v for v in buoys.values() if isinstance(v, list)), [])
-        print(f"  {len(blist)} buoys; first 3: {json.dumps(blist[:3])[:400]}")
+        blist = parse_rows(r)
+        print(f"  {len(blist)} buoys; first 3: "
+              f"{json.dumps(blist[:3], ensure_ascii=False)[:400]}")
         bid = None
         if blist:
             b0 = blist[0]
