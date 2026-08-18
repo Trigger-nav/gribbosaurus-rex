@@ -60,6 +60,20 @@ def test_domain_guard():
     assert raised                        # Channel is outside Italian waters
 
 
+def test_concat_merges_and_cleans_up():
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        a, b = td / "_u.part.grib", td / "_v.part.grib"
+        a.write_bytes(b"GRIB-u-messages")
+        b.write_bytes(b"GRIB-v-messages")
+        out = td / "icon_2i_wind.grib2"
+        Icon2iFetcher._concat([a, b], out)
+        assert out.read_bytes() == b"GRIB-u-messagesGRIB-v-messages"
+        assert not a.exists() and not b.exists()      # parts cleaned up
+        assert not out.with_suffix(".grib2.part").exists()
+
+
 def test_registry():
     assert "icon_2i" in FETCHERS
     f = get_fetcher("icon_2i")

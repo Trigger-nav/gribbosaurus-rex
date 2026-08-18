@@ -82,15 +82,36 @@ class Icon2iFetcher(BaseFetcher):
 
     # -- fetching ------------------------------------------------------------
 
+    @staticmethod
+    def _concat(parts: list[Path], out: Path) -> None:
+        """Concatenate GRIB files into one. GRIB is a stream of
+        self-contained messages, so byte-concatenation is valid — and
+        NECESSARY here: MeteoHub ships U and V in separate per-variable
+        files, but extract._open_run_dataset requires both wind
+        components in the same file (every other fleet model delivers
+        them together). Shipping one combined file keeps the extractor
+        unchanged. Found the hard way 2026-08-18: per-variable files
+        decoded fine individually (the smoke's mistake) but the run
+        assembler skipped every file as "missing wind fields"."""
+        tmp = out.with_suffix(out.suffix + ".part")
+        with tmp.open("wb") as fh:
+            for part in parts:
+                fh.write(part.read_bytes())
+        tmp.replace(out)
+        for part in parts:
+            part.unlink(missing_ok=True)
+
     def fetch(self, cycle: datetime, cfg: RaceConfig, dest: Path) -> FetchResult:
         self._check_domain(cfg)
         rid = self._run_id(cycle)
-        files: list[Path] = []
+        parts: list[Path] = []
         for var, lvl in WIND_VARS.items():
-            out = dest / f"{self.name}_{var.lower()}.grib2"
-            self.download(self._url(BASE, rid, var, lvl), out, timeout=600)
-            files.append(out)
-        nbytes = self.slim_fetched(files, cfg)
-        log.info("icon_2i %s: %d files, %.1f MB", cycle, len(files),
+            part = dest / f"_{var.lower()}.part.grib"
+            self.download(self._url(BASE, rid, var, lvl), part, timeout=600)
+            parts.append(part)
+        out = dest / f"{self.name}_wind.grib2"
+        self._concat(parts, out)
+        nbytes = self.slim_fetched([out], cfg)
+        log.info("icon_2i %s: 1 file (u+v merged), %.1f MB", cycle,
                  nbytes / 1e6)
-        return FetchResult(files=files, nbytes=nbytes)
+        return FetchResult(files=[out], nbytes=nbytes)

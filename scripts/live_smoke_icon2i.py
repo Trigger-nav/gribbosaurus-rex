@@ -40,20 +40,21 @@ def main() -> int:
         res = f.fetch(cycle, fc, Path(td))
         print(f"fetched + cropped: {len(res.files)} files, "
               f"{res.nbytes/1e6:.1f} MB total")
-        import cfgrib
-        have_u = have_v = False
-        for path in res.files:
-            for ds in cfgrib.open_datasets(str(path),
-                                           backend_kwargs={"indexpath": ""}):
-                print(f"  {path.name}: vars={list(ds.data_vars)} "
-                      f"dims={dict(ds.sizes)} "
-                      f"lat.ndim={ds['latitude'].ndim if 'latitude' in ds else '?'}")
-                have_u |= any(v in ds.data_vars for v in ("u10", "10u"))
-                have_v |= any(v in ds.data_vars for v in ("v10", "10v"))
-                ds.close()
-        ok = have_u and have_v
-        print("\n✅ ICON-2I wind present and decodes — safe in prod"
-              if ok else "\n❌ wind missing — send me the output")
+
+        # Decode through the REAL pipeline entry (extract.open_run), not
+        # per-file cfgrib — the 2026-08-18 per-variable-file bug decoded
+        # fine per file but failed run assembly. Never weaken this check.
+        from types import SimpleNamespace
+
+        from gribbosaurus_rex.config import load_fleet as _lf
+        from gribbosaurus_rex.extract import open_run
+        pm = next(r for r in _lf() if r.name == "palermo-montecarlo")
+        ds = open_run(SimpleNamespace(path=str(td)), bbox=pm.bbox)
+        print(f"  assembled: vars={list(ds.data_vars)} dims={dict(ds.sizes)}")
+        ok = ("u10" in ds.data_vars and "v10" in ds.data_vars
+              and ds.sizes.get("time", 0) >= 70)
+        print("\n✅ ICON-2I assembles through the pipeline — safe in prod"
+              if ok else "\n❌ assembly failed — send me the output")
     return 0 if ok else 2
 
 
