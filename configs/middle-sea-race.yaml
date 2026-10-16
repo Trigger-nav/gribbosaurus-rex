@@ -16,8 +16,14 @@ models:
   - aifs
   - gfs
   - icon_eu        # ICON-EU domain reaches the central Med
-  # mf_arpege disabled for now (box pass-budget); ICON-2i is the intended
-  # high-res here anyway (roadmap). Re-enable after a box upgrade.
+  - icon_2i        # Italian 2.2 km (MeteoHub open data) — domain 33.7-48.9N
+                   # 3-22E covers the WHOLE course: Malta, Messina,
+                   # Stromboli, Pantelleria, Lampedusa. Enabled 2026-10-15
+                   # for MSR; NB runs fetched before this change are
+                   # cropped to the P-M box, so MSR scoring starts with
+                   # the first run fetched AFTER deploy.
+  - mf_arpege      # 0.1° Europe — full-course coverage, in season now.
+  # mf_arome stays OFF: its domain ends at 37.5N (north-Sicily sliver only)
 
 max_lead_hours: 120
 keep_runs: 4        # was 8 — halved 2026-08-18: verify decodes every kept run per race and passes hit 39min CPU vs the 45min kill
